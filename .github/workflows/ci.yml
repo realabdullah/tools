@@ -77,7 +77,41 @@ jobs:
             type=raw,value=latest
             type=sha,format=long
 
-      - name: Build and push
+      # Built and checked before it is published: a broken SPA fallback or a
+      # missing asset should never reach the registry.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: tools:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the image
+        run: |
+          set -euo pipefail
+          docker run -d --name tools-smoke -p 8080:8080 tools:smoke
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz >/dev/null && break
+            sleep 1
+          done
+
+          echo "healthz"
+          test "$(curl -fsS http://127.0.0.1:8080/healthz)" = "ok"
+
+          echo "SPA fallback serves the shell for a deep link"
+          curl -fsS http://127.0.0.1:8080/jwt | grep -q '<div id="root">'
+
+          echo "unknown asset paths still 404 rather than returning HTML"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/assets/nope.js)" = "404"
+
+          echo "security headers survive per-location add_header"
+          curl -sS -D - -o /dev/null http://127.0.0.1:8080/jwt | grep -qi 'content-security-policy'
+
+          docker rm -f tools-smoke
+
+      - name: Push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -85,7 +119,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     name: Tell Dokploy to pull

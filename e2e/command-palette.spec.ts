@@ -3,6 +3,7 @@ import { SAMPLE_JWT } from './fixtures';
 
 test('the keyboard shortcut opens the palette and navigates', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
 
   const search = page.getByRole('combobox');
@@ -17,6 +18,7 @@ test('the keyboard shortcut opens the palette and navigates', async ({ page }) =
 
 test('arrow keys move the selection', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
@@ -25,6 +27,8 @@ test('arrow keys move the selection', async ({ page }) => {
 
 test('escape closes the palette and leaves the route alone', async ({ page }) => {
   await page.goto('/jwt');
+  // The shortcut is a document listener, so wait until the app is mounted.
+  await expect(page.getByRole('textbox', { name: 'JWT' })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await expect(page.getByRole('combobox')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -34,6 +38,7 @@ test('escape closes the palette and leaves the route alone', async ({ page }) =>
 
 test('pasting a token into the palette resolves it to the JWT workspace', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await page.getByRole('combobox').fill(SAMPLE_JWT);
 
@@ -47,6 +52,7 @@ test('pasting a token into the palette resolves it to the JWT workspace', async 
 
 test('a query with no match says so', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await page.getByRole('combobox').fill('sqlite');
   await expect(page.getByText(/Nothing matches/)).toBeVisible();

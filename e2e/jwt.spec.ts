@@ -8,9 +8,12 @@ test('pasting a token decodes it with no action to take', async ({ page }) => {
   await expect(page.getByText('"HS256"')).toBeVisible();
   await expect(page.getByText('"Ada Løvelace"')).toBeVisible();
 
-  // Claims are annotated, not replaced.
-  await expect(page.getByRole('rowheader', { name: 'exp' })).toBeVisible();
-  await expect(page.getByText('4102444800')).toBeVisible();
+  // Claims are annotated, not replaced: the raw value stays, with a reading.
+  const expRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('rowheader', { name: 'exp' }) });
+  await expect(expRow).toContainText('4102444800');
+  await expect(expRow).toContainText('Expires at');
 });
 
 test('the interface never implies the signature was checked', async ({ page }) => {
@@ -29,7 +32,7 @@ test('a broken payload still shows the header it could read', async ({ page }) =
   await page.goto('/jwt');
   await page.getByRole('textbox', { name: 'JWT' }).fill('eyJhbGciOiJIUzI1NiJ9.****.sig');
   await expect(page.getByText('"HS256"')).toBeVisible();
-  await expect(page.getByText(/not valid Base64URL/)).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /not valid Base64URL/ })).toBeVisible();
 });
 
 test('an unsigned token is called out', async ({ page }) => {

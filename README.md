@@ -21,7 +21,10 @@ Read [VISION.md](./VISION.md) before making product or architectural decisions.
 ## Stack
 
 React 19 · TypeScript (strict) · Vite · TanStack Router · Tailwind CSS v4 ·
-Radix Dialog · Motion · Lucide · Vitest · Playwright · pnpm
+Radix Dialog · Lucide · Vitest · Playwright · pnpm
+
+No animation library: Radix drives its own enter and exit transitions through
+`data-state`, so the palette animates from CSS keyframes in `styles/global.css`.
 
 ## Local development
 

@@ -73,3 +73,49 @@
     background: transparent;
   }
 }
+
+@layer components {
+  /*
+   * Overlay and panel transitions.
+   *
+   * Radix drives these through `data-state`, and waits for the animation to
+   * finish before unmounting — which is the whole reason this needs no
+   * animation library. The reduced-motion rule in the base layer collapses
+   * them to nothing.
+   */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -6px) scale(0.985);
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+      transform: translate(-50%, -4px) scale(0.99);
+    }
+  }
+
+  .animate-overlay[data-state='open'] {
+    animation: fade-in 120ms var(--ease-standard);
+  }
+  .animate-overlay[data-state='closed'] {
+    animation: fade-out 100ms var(--ease-standard);
+  }
+  .animate-panel[data-state='open'] {
+    animation: pop-in var(--duration-base) var(--ease-out-quint);
+  }
+  .animate-panel[data-state='closed'] {
+    animation: pop-out 120ms var(--ease-standard);
+  }
+}

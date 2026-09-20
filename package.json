@@ -23,7 +23,6 @@
     "@radix-ui/react-dialog": "^1.1.23",
     "@tanstack/react-router": "^1.170.38",
     "lucide-react": "^1.47.0",
-    "motion": "^13.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

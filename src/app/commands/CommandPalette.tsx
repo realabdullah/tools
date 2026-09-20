@@ -1,6 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useNavigate } from '@tanstack/react-router';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Kbd } from '@/components/ui/Kbd';
@@ -203,50 +202,19 @@ export const CommandPalette = ({
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-}) => {
-  const reduceMotion = useReducedMotion();
-
-  return (
-    <Dialog.Root open={isOpen} onOpenChange={onOpenChange}>
-      <AnimatePresence>
-        {isOpen ? (
-          <Dialog.Portal forceMount>
-            <Dialog.Overlay asChild forceMount>
-              <motion.div
-                className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12 }}
-              />
-            </Dialog.Overlay>
-            <Dialog.Content asChild forceMount aria-describedby={undefined}>
-              <motion.div
-                className={cn(
-                  'fixed top-[12vh] left-1/2 z-50 w-[min(34rem,calc(100vw-1.5rem))]',
-                  'border-border-strong bg-elevated shadow-pop overflow-hidden rounded-lg border',
-                )}
-                initial={{
-                  opacity: 0,
-                  y: reduceMotion ? 0 : -6,
-                  scale: reduceMotion ? 1 : 0.985,
-                  x: '-50%',
-                }}
-                animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-                exit={{
-                  opacity: 0,
-                  y: reduceMotion ? 0 : -4,
-                  scale: reduceMotion ? 1 : 0.99,
-                  x: '-50%',
-                }}
-                transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <Contents onClose={() => onOpenChange(false)} />
-              </motion.div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        ) : null}
-      </AnimatePresence>
-    </Dialog.Root>
-  );
-};
+}) => (
+  <Dialog.Root open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog.Portal>
+      <Dialog.Overlay className="animate-overlay fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]" />
+      <Dialog.Content
+        aria-describedby={undefined}
+        className={cn(
+          'animate-panel fixed top-[12vh] left-1/2 z-50 w-[min(34rem,calc(100vw-1.5rem))]',
+          'border-border-strong bg-elevated shadow-pop -translate-x-1/2 overflow-hidden rounded-lg border',
+        )}
+      >
+        <Contents onClose={() => onOpenChange(false)} />
+      </Dialog.Content>
+    </Dialog.Portal>
+  </Dialog.Root>
+);
