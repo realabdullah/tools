@@ -106,6 +106,19 @@
     }
   }
 
+  /*
+   * Horizontal centring belongs to this rule and nowhere else.
+   *
+   * Tailwind's `-translate-x-1/2` sets the standalone `translate` property,
+   * which composes *on top of* a `transform` in a keyframe rather than being
+   * overridden by it — the panel then starts a full half-width to the left and
+   * slides in sideways. Centring here keeps it in the same property the
+   * animation uses.
+   */
+  .animate-panel {
+    transform: translate(-50%, 0);
+  }
+
   .animate-overlay[data-state='open'] {
     animation: fade-in 120ms var(--ease-standard);
   }

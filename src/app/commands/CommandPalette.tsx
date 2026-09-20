@@ -214,7 +214,7 @@ export const CommandPalette = ({
         aria-describedby={undefined}
         className={cn(
           'animate-panel fixed top-[12vh] left-1/2 z-50 w-[min(34rem,calc(100vw-1.5rem))]',
-          'border-border-strong bg-elevated shadow-pop -translate-x-1/2 overflow-hidden rounded-lg border',
+          'border-border-strong bg-elevated shadow-pop overflow-hidden rounded-lg border',
         )}
       >
         <Contents onClose={() => onOpenChange(false)} />

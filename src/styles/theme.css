@@ -49,6 +49,24 @@
   --color-warning: oklch(0.8 0.13 78);
   --color-danger: oklch(0.7 0.16 22);
 
+  /*
+   * Syntax.
+   *
+   * Separate from the status ramp on purpose: a number is not a success and a
+   * boolean is not a warning. Reusing those made documents read like a status
+   * report. These are tuned against --color-surface for even weight, so no one
+   * token shouts over the others.
+   */
+  --color-syntax-key: oklch(0.79 0.11 252);
+  --color-syntax-string: oklch(0.82 0.1 148);
+  --color-syntax-number: oklch(0.85 0.1 82);
+  --color-syntax-boolean: oklch(0.78 0.13 310);
+  --color-syntax-null: oklch(0.63 0.02 285);
+  --color-syntax-punctuation: oklch(0.55 0.01 285);
+
+  /* Search + diff washes */
+  --color-highlight: oklch(0.85 0.15 92);
+
   /* Radius */
   --radius-xs: 3px;
   --radius-sm: 5px;
@@ -90,5 +108,14 @@
     --shadow-pop:
       0 1px 1px oklch(0.4 0.01 285 / 0.06), 0 6px 18px -6px oklch(0.4 0.01 285 / 0.16),
       0 18px 44px -12px oklch(0.4 0.01 285 / 0.14);
+
+    --color-syntax-key: oklch(0.47 0.16 255);
+    --color-syntax-string: oklch(0.44 0.12 150);
+    --color-syntax-number: oklch(0.5 0.12 62);
+    --color-syntax-boolean: oklch(0.48 0.18 305);
+    --color-syntax-null: oklch(0.6 0.02 285);
+    --color-syntax-punctuation: oklch(0.62 0.01 285);
+
+    --color-highlight: oklch(0.86 0.16 92);
   }
 }
