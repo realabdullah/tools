@@ -1,18 +1,37 @@
 import { base64Tool } from './base64/definition';
+import { jsonTool } from './json/definition';
 import { jwtTool } from './jwt/definition';
-import { CONFIDENCE_ORDER, type ToolDefinition, type ToolMatch } from './types';
+import {
+  CONFIDENCE_ORDER,
+  viewsOf,
+  type ToolDefinition,
+  type ToolMatch,
+  type ToolView,
+} from './types';
 
 /**
  * Every capability, declared once. Routing, the command palette and intent
  * detection all read from here, so adding a workspace is a one-line change
  * plus a lazy route.
  */
-export const tools: readonly ToolDefinition[] = [jwtTool, base64Tool];
+export const tools: readonly ToolDefinition[] = [jsonTool, jwtTool, base64Tool];
 
-export const toolBySlug = (slug: string): ToolDefinition | undefined =>
-  tools.find((tool) => tool.slug === slug);
+/** The tool that owns a pathname, including any of its nested views. */
+export const toolByPath = (pathname: string): ToolDefinition | undefined =>
+  tools.find((tool) =>
+    viewsOf(tool).some((view) => view.path === pathname || pathname.startsWith(`${view.path}/`)),
+  );
 
-/** Substring search over name, slug, keywords and aliases. */
+export const viewByPath = (pathname: string): ToolView | undefined => {
+  const tool = toolByPath(pathname);
+  if (!tool) return undefined;
+  // Longest match wins, so /json/compare does not resolve to /json.
+  return [...viewsOf(tool)]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((view) => pathname === view.path || pathname.startsWith(`${view.path}/`));
+};
+
+/** Substring search over names, summaries, keywords, aliases and views. */
 export const searchTools = (query: string): readonly ToolDefinition[] => {
   const needle = query.trim().toLowerCase();
   if (!needle) return tools;
@@ -20,13 +39,35 @@ export const searchTools = (query: string): readonly ToolDefinition[] => {
   return tools.filter((tool) => {
     const haystack = [
       tool.name,
-      tool.slug,
+      tool.path,
       tool.summary,
       ...tool.keywords,
       ...(tool.aliases ?? []),
+      ...(tool.views ?? []).flatMap((view) => [view.name, view.summary, ...view.keywords]),
     ];
     return haystack.some((entry) => entry.toLowerCase().includes(needle));
   });
+};
+
+/** Views matching a query, across every tool — what the palette lists. */
+export const searchViews = (query: string): readonly { tool: ToolDefinition; view: ToolView }[] => {
+  const needle = query.trim().toLowerCase();
+
+  return searchTools(query).flatMap((tool) =>
+    viewsOf(tool)
+      .filter((view) => {
+        if (!needle) return true;
+        // A tool matched by its own name should list all of its views.
+        const toolMatches = [tool.name, ...tool.keywords, ...(tool.aliases ?? [])].some((entry) =>
+          entry.toLowerCase().includes(needle),
+        );
+        if (toolMatches) return true;
+        return [view.name, view.summary, ...view.keywords].some((entry) =>
+          entry.toLowerCase().includes(needle),
+        );
+      })
+      .map((view) => ({ tool, view })),
+  );
 };
 
 const MAX_DETECTION_INPUT = 200_000;

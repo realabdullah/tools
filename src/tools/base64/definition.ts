@@ -4,7 +4,7 @@ import { decodeText, looksLikeBase64 } from './lib/base64';
 
 export const base64Tool: ToolDefinition = {
   id: 'base64',
-  slug: 'base64',
+  path: '/base64',
   name: 'Base64',
   summary: 'Encode and decode, both directions at once',
   icon: ArrowLeftRight,

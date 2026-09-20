@@ -4,7 +4,7 @@ import { looksLikeJwt } from './lib/decode-jwt';
 
 export const jwtTool: ToolDefinition = {
   id: 'jwt',
-  slug: 'jwt',
+  path: '/jwt',
   name: 'JWT',
   summary: 'Inspect a token’s header, payload and claims',
   icon: KeyRound,
