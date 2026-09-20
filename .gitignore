@@ -1,0 +1,19 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+# local env / editor state
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# test output
+playwright-report
+test-results
+blob-report
+.playwright
