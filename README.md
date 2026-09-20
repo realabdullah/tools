@@ -2,7 +2,7 @@
 
 A personal developer workbench, deployed at **https://tools.abdspace.xyz**.
 
-Two capabilities today:
+Three capabilities today:
 
 | Route     | What it does                                                  |
 | --------- | ------------------------------------------------------------- |
@@ -25,6 +25,8 @@ Radix Dialog · Lucide · Vitest · Playwright · pnpm
 
 No animation library: Radix drives its own enter and exit transitions through
 `data-state`, so the palette animates from CSS keyframes in `styles/global.css`.
+No editor library either: the source panes are plain textareas, because the
+reading surface is the result pane beside them, which is already highlighted.
 
 ## Local development
 
@@ -61,6 +63,7 @@ src/
 ├── tools/
 │   ├── registry.ts  every capability, declared once
 │   ├── types.ts     the ToolDefinition contract
+│   ├── json/        definition · lib (pure) · components · tests
 │   ├── jwt/         definition · lib (pure) · components · tests
 │   └── base64/      definition · lib (pure) · components · tests
 ├── components/
@@ -78,8 +81,14 @@ is pure, framework-free and tested without rendering React. Components read
 those functions; they do not contain the logic.
 
 **The registry is the single source of capability truth.** A `ToolDefinition`
-carries the slug, name, summary, icon, search keywords and an optional
+carries the path, name, summary, icon, search keywords and an optional
 `detect()`. Routing, the palette and intent resolution all read from it.
+
+**A capability can have more than one view.** `/json` and `/json/compare` are
+one tool, not two — same parser, same tree, same diagnostics. Views appear as
+a small tab group in the top bar, but only for the tool you are in, and only
+when it has more than one. This is how JSON stays one environment instead of
+fragmenting into a page per operation.
 
 **State lives at the lowest useful level.** No global store. The Base64
 workspace keeps only the side you edited and derives the other on render, which
@@ -92,7 +101,7 @@ a token must not end up in history, a bookmark or a referrer.
 1. `src/tools/<name>/lib/` — the pure transformation, with tests beside it.
 2. `src/tools/<name>/definition.ts` — a `ToolDefinition`, plus `detect()` if
    its input is recognisable on sight.
-3. Add the slug to `ToolSlug` in `src/tools/types.ts`.
+3. Add its route to `ToolPath` in `src/tools/types.ts`.
 4. Register it in `src/tools/registry.ts`.
 5. Add a lazy route in `src/app/routing/router.tsx`.
 6. `src/tools/<name>/components/` — the workspace, built from `components/ui`.
@@ -100,13 +109,19 @@ a token must not end up in history, a bookmark or a referrer.
 The compiler enforces steps 3–5 together; the palette, the root surface and
 search pick the tool up with no further wiring.
 
+To add a _view_ to an existing tool, give it an entry in `views` (and a
+`defaultViewName`, so the tab group does not repeat the tool's name), then
+steps 3 and 5 for its route.
+
 ## Testing
 
 - **Vitest** covers transformation logic: encoding, decoding, malformed input,
-  Unicode, Base64URL, claim parsing, validity windows, intent detection.
+  Unicode, Base64URL, claim parsing, validity windows, intent detection, JSON
+  syntax diagnostics, path queries, tree building and the structural diff.
 - **Playwright** covers the flows that matter: deep links, reload, history,
-  paste-to-decode in both workspaces, copy, the keyboard palette, invalid
-  input, and the guarantee that pasted content never reaches the URL.
+  paste-to-result in every workspace, copy, the keyboard palette, tree
+  navigation by keyboard, invalid input, and the guarantee that pasted content
+  never reaches the URL.
 
 ## Production build
 
