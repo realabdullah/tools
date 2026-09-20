@@ -21,7 +21,9 @@ test('pasting Base64 at the root offers to decode it', async ({ page }) => {
   await page.getByRole('button', { name: /Decode from Base64/ }).click();
 
   await expect(page).toHaveURL(/\/base64$/);
-  await expect(page.getByRole('textbox', { name: 'Plain text' })).toHaveValue(SAMPLE_TEXT);
+  // The handed-over value is Base64, so the workspace opens in decode.
+  await expect(page.getByRole('radio', { name: 'decode' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('textbox', { name: 'Text output' })).toHaveValue(SAMPLE_TEXT);
 });
 
 test('ordinary text offers to encode it', async ({ page }) => {

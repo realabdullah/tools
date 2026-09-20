@@ -13,15 +13,15 @@ test('a direct visit to /jwt is served by the SPA fallback', async ({ page }) =>
 
 test('a direct visit to /base64 is served by the SPA fallback', async ({ page }) => {
   await page.goto('/base64');
-  await expect(page.getByRole('textbox', { name: 'Plain text' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Base64' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Text to encode' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Base64 output' })).toBeVisible();
 });
 
 test('reloading a deep link keeps the user there', async ({ page }) => {
   await page.goto('/base64');
   await page.reload();
   await expect(page).toHaveURL(/\/base64$/);
-  await expect(page.getByRole('textbox', { name: 'Base64' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Base64 output' })).toBeVisible();
 });
 
 test('an unknown route explains itself instead of breaking', async ({ page }) => {

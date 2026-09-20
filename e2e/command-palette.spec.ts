@@ -13,7 +13,7 @@ test('the keyboard shortcut opens the palette and navigates', async ({ page }) =
   await page.keyboard.press('Enter');
 
   await expect(page).toHaveURL(/\/base64$/);
-  await expect(page.getByRole('textbox', { name: 'Base64' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Base64 output' })).toBeVisible();
 });
 
 test('arrow keys move the selection', async ({ page }) => {
