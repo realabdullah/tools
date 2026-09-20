@@ -1,53 +1,59 @@
-import { ChevronsDownUp, ChevronsUpDown, CornerDownRight, Eraser } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { JsonBlock } from '@/components/shared/JsonBlock';
+import { ArrowDownAZ, CornerDownRight, Eraser, Unlink, WandSparkles } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
-import { Editor } from '@/components/ui/Editor';
 import { Panel } from '@/components/ui/Panel';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { byteLength, formatBytes } from '@/lib/bytes';
 import { takePendingInput } from '@/lib/handoff';
 import { formatJson, summarise, type IndentStyle } from '../lib/format';
+import { findMatches } from '../lib/matches';
 import { parseJson } from '../lib/parse';
 import { queryJson } from '../lib/query';
+import { searchJson, EMPTY_SEARCH } from '../lib/search';
+import { sortKeys, unwrapEncoded } from '../lib/transform';
 import { allContainerPaths, defaultExpanded } from '../lib/tree';
 import type { JsonValue } from '../lib/types';
+import { JsonEditor } from './JsonEditor';
 import { JsonTree } from './JsonTree';
-import { QueryBar } from './QueryBar';
+import { Toolbar } from './Toolbar';
 
-type ResultView = 'tree' | 'raw';
+type View = 'tree' | 'raw';
 
 /**
- * One document, several ways of looking at it.
+ * One box.
  *
- * Validating, formatting, minifying, browsing and querying are not five tools;
- * they are one surface with a view control and an indent control. Nothing is
- * submitted and nothing has a mode — the result simply follows the source.
+ * An earlier version split the screen into a source pane and a result pane,
+ * which spent half the width showing the same document twice. This is a single
+ * surface with a toolbar: the view control decides whether you are reading a
+ * tree or the text, and the text stays editable so pasting never needs a mode.
  */
 export const JsonWorkspace = () => {
   const [source, setSource] = useState(() => takePendingInput() ?? '');
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState<ResultView>('tree');
+  const [view, setView] = useState<View>('tree');
   const [indent, setIndent] = useState<IndentStyle>('2');
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const [search, setSearch] = useState('');
+  const [activeMatch, setActiveMatch] = useState(0);
+  const [filter, setFilter] = useState('');
 
   const trimmed = source.trim();
   const parsed = useMemo(() => (trimmed === '' ? null : parseJson(source)), [source, trimmed]);
   const document = parsed?.ok === true ? parsed.value : null;
+  const error = parsed?.ok === false ? parsed.error : null;
 
   const queried = useMemo(
-    () => (document === null ? null : queryJson(document, query)),
-    [document, query],
+    () => (document === null ? null : queryJson(document, filter)),
+    [document, filter],
   );
+  const filtering = filter.trim() !== '';
 
-  /** What the result panel shows: the match, or every match as an array. */
+  /** What the box shows: the document, the single match, or all matches. */
   const result = useMemo<JsonValue | null>(() => {
     if (!queried?.ok) return null;
-    if (query.trim() === '') return queried.matches[0]?.value ?? null;
+    if (!filtering) return queried.matches[0]?.value ?? null;
     if (queried.matches.length === 1) return queried.matches[0]?.value ?? null;
     return queried.matches.map((match) => match.value);
-  }, [queried, query]);
+  }, [queried, filtering]);
 
   const formatted = useMemo(
     () => (result === null ? '' : formatJson(result, indent)),
@@ -55,9 +61,21 @@ export const JsonWorkspace = () => {
   );
   const stats = useMemo(() => (document === null ? null : summarise(document)), [document]);
 
-  // Expansion is derived from the result, with the user's toggles layered on
-  // top. Keying the override on the defaults' identity means a new document
-  // discards stale expansion state without an effect to reset it.
+  // While a filter is on, the box shows a derived value, so the text is not
+  // the source any more and must not be editable.
+  const editorText = filtering ? formatted : source;
+  const matches = useMemo(
+    () => (view === 'raw' ? findMatches(editorText, search) : []),
+    [view, editorText, search],
+  );
+
+  const treeSearch = useMemo(
+    () => (view === 'tree' && result !== null ? searchJson(result, search) : EMPTY_SEARCH),
+    [view, result, search],
+  );
+  const searching = search.trim() !== '';
+  const matchCount = view === 'raw' ? matches.length : treeSearch.matches.size;
+
   const defaults = useMemo(
     () => (result === null ? new Set<string>() : defaultExpanded(result)),
     [result],
@@ -66,7 +84,12 @@ export const JsonWorkspace = () => {
     base: ReadonlySet<string>;
     expanded: Set<string>;
   } | null>(null);
-  const expanded = override?.base === defaults ? override.expanded : defaults;
+  const baseExpanded = override?.base === defaults ? override.expanded : defaults;
+  // A search opens whatever it had to look inside to find its hits.
+  const expanded = useMemo(
+    () => (searching ? new Set([...baseExpanded, ...treeSearch.expand]) : baseExpanded),
+    [searching, baseExpanded, treeSearch],
+  );
 
   const commit = useCallback(
     (next: Set<string>) => setOverride({ base: defaults, expanded: next }),
@@ -100,179 +123,175 @@ export const JsonWorkspace = () => {
     [result, expanded, commit],
   );
 
-  /** Puts the caret on the offending character rather than describing where it is. */
-  const jumpToError = () => {
-    if (parsed?.ok !== false) return;
-    const editor = editorRef.current;
-    if (!editor) return;
-
-    editor.focus();
-    editor.setSelectionRange(parsed.error.offset, Math.min(parsed.error.offset + 1, source.length));
-
-    const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight) || 20;
-    editor.scrollTop = Math.max(0, (parsed.error.line - 1) * lineHeight - editor.clientHeight / 2);
+  const stepMatch = (delta: number) => {
+    if (matchCount === 0) return;
+    setActiveMatch((current) => (current + delta + matchCount) % matchCount);
   };
 
-  const error = parsed?.ok === false ? parsed.error : null;
+  const onSearch = (value: string) => {
+    setSearch(value);
+    setActiveMatch(0);
+  };
+
+  const encoded = document === null ? null : unwrapEncoded(document);
+
+  const showTree = view === 'tree' && result !== null;
+  const emptyFilter = view === 'tree' && result === null && filtering && queried?.ok === true;
+
+  const tools =
+    view === 'raw' ? (
+      <>
+        <SegmentedControl
+          label="Indentation"
+          value={indent}
+          onChange={setIndent}
+          options={[
+            { value: '2', label: '2', title: 'Two spaces' },
+            { value: '4', label: '4', title: 'Four spaces' },
+            { value: 'tab', label: 'tab', title: 'Tabs' },
+            { value: 'min', label: 'min', title: 'Minified — no whitespace' },
+          ]}
+        />
+        <Button
+          variant="subtle"
+          disabled={document === null || filtering}
+          onClick={() => document !== null && setSource(formatJson(document, indent))}
+          title="Rewrite the document with the chosen indentation"
+        >
+          <WandSparkles size={12} aria-hidden />
+          Format
+        </Button>
+        <Button
+          variant="subtle"
+          disabled={document === null || filtering}
+          onClick={() => document !== null && setSource(formatJson(sortKeys(document), indent))}
+          title="Order every object's keys alphabetically"
+        >
+          <ArrowDownAZ size={12} aria-hidden />
+          Sort keys
+        </Button>
+        {encoded !== null ? (
+          <Button
+            variant="subtle"
+            onClick={() => setSource(formatJson(encoded, indent))}
+            title="This document is a JSON string containing JSON — parse it"
+          >
+            <Unlink size={12} aria-hidden />
+            Unwrap
+          </Button>
+        ) : null}
+      </>
+    ) : null;
 
   return (
     <div className="h-full overflow-hidden">
-      <div className="mx-auto flex h-full w-full max-w-[96rem] flex-col px-3 py-3 sm:px-4 sm:py-4">
-        <div className="grid min-h-0 flex-1 grid-rows-2 gap-2 lg:grid-cols-2 lg:grid-rows-1 lg:gap-3">
-          <Panel
-            label="Source"
-            className={error ? 'border-danger/40' : undefined}
-            meta={
-              trimmed === '' ? null : (
-                <span data-numeric className="hidden sm:inline">
-                  {formatBytes(byteLength(source))}
-                </span>
-              )
-            }
-            actions={
-              <>
-                {trimmed === '' ? null : (
-                  <>
-                    <Button variant="ghost" aria-label="Clear source" onClick={() => setSource('')}>
-                      <Eraser size={12} aria-hidden />
-                    </Button>
-                    <CopyButton value={source} label="source" />
-                  </>
-                )}
-              </>
-            }
-            bodyClassName="flex flex-col"
-          >
-            <Editor
-              ref={editorRef}
-              autoFocus
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-              placeholder="Paste JSON…"
-              aria-label="JSON source"
-              aria-invalid={error !== null}
-              className="break-words"
+      <div className="mx-auto flex h-full w-full max-w-[84rem] flex-col px-3 py-3 sm:px-4 sm:py-4">
+        <Panel
+          className="min-h-0 flex-1"
+          label="JSON"
+          meta={
+            stats ? (
+              <span data-numeric className="hidden md:inline">
+                {formatBytes(byteLength(source))} · {stats.keys.toLocaleString()} keys · depth{' '}
+                {stats.depth}
+              </span>
+            ) : null
+          }
+          actions={
+            <>
+              <SegmentedControl
+                label="View"
+                value={view}
+                onChange={(next) => {
+                  setView(next);
+                  setActiveMatch(0);
+                }}
+                options={[
+                  { value: 'tree', label: 'tree', title: 'Browse the structure' },
+                  { value: 'raw', label: 'raw', title: 'Read and edit the text' },
+                ]}
+              />
+              {trimmed === '' ? null : (
+                <Button variant="ghost" aria-label="Clear" onClick={() => setSource('')}>
+                  <Eraser size={12} aria-hidden />
+                </Button>
+              )}
+              <CopyButton value={formatted} label="JSON" />
+            </>
+          }
+          bodyClassName="flex min-h-0 flex-col"
+        >
+          {document === null && trimmed === '' ? null : (
+            <Toolbar
+              search={search}
+              onSearch={onSearch}
+              matchCount={matchCount}
+              activeMatch={activeMatch}
+              onStepMatch={stepMatch}
+              filter={filter}
+              onFilter={setFilter}
+              filterError={queried?.ok === false ? queried.message : null}
+              filterCount={filtering && queried?.ok ? queried.matches.length : null}
+              tools={tools}
             />
-            {error ? (
-              <div
-                role="status"
-                className="border-danger/30 text-2xs text-danger flex shrink-0 items-center gap-2 border-t px-3 py-2"
-              >
-                <span className="min-w-0 flex-1">{error.message}</span>
-                <button
-                  type="button"
-                  onClick={jumpToError}
-                  className="hover:bg-danger/10 flex shrink-0 items-center gap-1 rounded-xs px-1 py-0.5 font-mono transition-colors"
-                >
-                  <CornerDownRight size={11} aria-hidden />
-                  line {error.line}, column {error.column}
-                </button>
-              </div>
-            ) : null}
-          </Panel>
+          )}
 
-          <Panel
-            label="Result"
-            meta={
-              stats ? (
-                <span data-numeric className="hidden sm:inline">
-                  {stats.keys.toLocaleString()} keys · depth {stats.depth}
-                </span>
-              ) : null
-            }
-            actions={
-              <>
-                {view === 'tree' && result !== null ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      aria-label="Collapse all"
-                      onClick={() => commit(new Set())}
-                    >
-                      <ChevronsDownUp size={12} aria-hidden />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      aria-label="Expand all"
-                      onClick={() => commit(allContainerPaths(result))}
-                    >
-                      <ChevronsUpDown size={12} aria-hidden />
-                    </Button>
-                  </>
-                ) : null}
-                {view === 'raw' ? (
-                  <SegmentedControl
-                    label="Indentation"
-                    value={indent}
-                    onChange={setIndent}
-                    options={[
-                      { value: '2', label: '2', title: 'Two spaces' },
-                      { value: '4', label: '4', title: 'Four spaces' },
-                      { value: 'tab', label: 'tab', title: 'Tabs' },
-                      { value: 'min', label: 'min', title: 'Minified — no whitespace' },
-                    ]}
-                  />
-                ) : null}
-                <SegmentedControl
-                  label="Result view"
-                  value={view}
-                  onChange={setView}
-                  options={[
-                    { value: 'tree', label: 'tree' },
-                    { value: 'raw', label: 'raw' },
-                  ]}
-                />
-                <CopyButton value={formatted} label="result" />
-              </>
-            }
-            bodyClassName="flex flex-col"
-          >
-            {document === null ? (
-              <EmptyResult invalid={error !== null} />
+          <div className="min-h-0 flex-1">
+            {showTree ? (
+              <JsonTree
+                value={result}
+                expanded={expanded}
+                onToggle={toggle}
+                onToggleDeep={toggleDeep}
+                visible={searching ? treeSearch.visible : undefined}
+                query={search}
+              />
+            ) : emptyFilter ? (
+              <Empty />
             ) : (
-              <>
-                <QueryBar
-                  value={query}
-                  onChange={setQuery}
-                  error={queried?.ok === false ? queried.message : null}
-                  matchCount={
-                    query.trim() === '' ? null : queried?.ok ? queried.matches.length : null
-                  }
-                />
-                {result === null ? (
-                  <p className="text-fg-subtle flex flex-1 items-center justify-center px-6 text-center text-xs">
-                    {queried?.ok === false
-                      ? 'Fix the filter to see a result'
-                      : 'No matches for this path'}
-                  </p>
-                ) : view === 'tree' ? (
-                  <JsonTree
-                    value={result}
-                    expanded={expanded}
-                    onToggle={toggle}
-                    onToggleDeep={toggleDeep}
-                  />
-                ) : (
-                  <JsonBlock source={formatted} />
-                )}
-              </>
+              /* With nothing to browse, the box is simply the editor — there is
+                 no state in which you have to switch views before you can paste. */
+              <JsonEditor
+                value={editorText}
+                onChange={setSource}
+                readOnly={filtering}
+                search={{ query: search, active: activeMatch }}
+              />
             )}
-          </Panel>
-        </div>
+          </div>
+
+          {error ? (
+            <ErrorStrip line={error.line} column={error.column} message={error.message} />
+          ) : null}
+        </Panel>
       </div>
     </div>
   );
 };
 
-/**
- * Deliberately quiet. A document is invalid for most of the time it is being
- * typed, and the source panel already says exactly what and where — a second
- * alarm over here would just flash.
- */
-const EmptyResult = ({ invalid }: { invalid: boolean }) => (
-  <div className="flex flex-1 items-center justify-center px-6 text-center">
-    <p className="text-fg-subtle text-xs">
-      {invalid ? 'Not valid JSON yet.' : 'Paste a document to read it.'}
-    </p>
+const Empty = () => (
+  <div className="flex h-full items-center justify-center px-6 text-center">
+    <p className="text-fg-subtle text-xs">No matches for this path.</p>
+  </div>
+);
+
+const ErrorStrip = ({
+  line,
+  column,
+  message,
+}: {
+  line: number;
+  column: number;
+  message: string;
+}) => (
+  <div
+    role="status"
+    className="border-danger/30 text-2xs text-danger flex shrink-0 items-center gap-2 border-t px-3 py-2"
+  >
+    <span className="min-w-0 flex-1">{message}</span>
+    <span className="flex shrink-0 items-center gap-1 font-mono">
+      <CornerDownRight size={11} aria-hidden />
+      line {line}, column {column}
+    </span>
   </div>
 );

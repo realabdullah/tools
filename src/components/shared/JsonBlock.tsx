@@ -9,11 +9,11 @@ import { tokenizeJson, type JsonTokenType } from '@/lib/json-tokens';
 const MAX_HIGHLIGHTED = 150_000;
 
 const TOKEN_CLASS: Record<JsonTokenType, string> = {
-  key: 'text-accent',
-  string: 'text-fg',
-  number: 'text-success',
-  keyword: 'text-warning',
-  punctuation: 'text-fg-subtle',
+  key: 'text-syntax-key',
+  string: 'text-syntax-string',
+  number: 'text-syntax-number',
+  keyword: 'text-syntax-boolean',
+  punctuation: 'text-syntax-punctuation',
   plain: 'text-fg-muted',
 };
 
