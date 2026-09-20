@@ -20,9 +20,28 @@ test('arrow keys move the selection', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
+
+  const options = page.getByRole('option');
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+
   await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/base64$/);
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(options.first()).toHaveAttribute('aria-selected', 'false');
+
+  // Wraps around rather than stopping at the end.
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await expect(options.last()).toHaveAttribute('aria-selected', 'true');
+});
+
+test('a tool’s views are reachable from the palette', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: /Base64/ })).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+k');
+
+  await page.getByRole('combobox').fill('diff');
+  await page.getByRole('option', { name: /JSON · Compare/ }).click();
+  await expect(page).toHaveURL(/\/json\/compare$/);
 });
 
 test('escape closes the palette and leaves the route alone', async ({ page }) => {
