@@ -25,8 +25,12 @@ Radix Dialog · Lucide · Vitest · Playwright · pnpm
 
 No animation library: Radix drives its own enter and exit transitions through
 `data-state`, so the palette animates from CSS keyframes in `styles/global.css`.
-No editor library either: the source panes are plain textareas, because the
-reading surface is the result pane beside them, which is already highlighted.
+
+**CodeMirror 6** is used by `/json` and nothing else. A textarea cannot show a
+gutter, fold a subtree, underline the exact character that broke the parse, or
+stay responsive on a megabyte of JSON, and all four are the point of a JSON
+workspace. It costs about 118 kB gzipped, entirely inside the `/json` chunk —
+the entry bundle is unchanged, and `/jwt` and `/base64` never download it.
 
 ## Local development
 
@@ -89,6 +93,10 @@ one tool, not two — same parser, same tree, same diagnostics. Views appear as
 a small tab group in the top bar, but only for the tool you are in, and only
 when it has more than one. This is how JSON stays one environment instead of
 fragmenting into a page per operation.
+
+**Colour is split between status and syntax.** `--color-success` and friends
+mean something happened; `--color-syntax-*` means "this is a number". Reusing
+the status ramp for syntax made documents read like a status report.
 
 **State lives at the lowest useful level.** No global store. The Base64
 workspace keeps only the side you edited and derives the other on render, which
