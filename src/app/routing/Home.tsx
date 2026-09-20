@@ -1,10 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, CornerDownLeft } from 'lucide-react';
+import { ArrowRight, CornerDownLeft, CornerDownRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Kbd } from '@/components/ui/Kbd';
 import { cn } from '@/lib/cn';
 import { setPendingInput } from '@/lib/handoff';
 import { detectTools, tools } from '@/tools/registry';
+import { viewsOf, type ToolPath } from '@/tools/types';
 
 /**
  * The root is an input surface, not a landing page.
@@ -20,9 +21,9 @@ export const Home = () => {
   const matches = useMemo(() => detectTools(input), [input]);
   const top = matches[0];
 
-  const go = (slug: string, payload: string) => {
+  const go = (path: ToolPath, payload: string) => {
     setPendingInput(payload);
-    void navigate({ to: `/${slug}` });
+    void navigate({ to: path });
   };
 
   return (
@@ -40,7 +41,7 @@ export const Home = () => {
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && top) {
               event.preventDefault();
-              go(top.tool.slug, input.trim());
+              go(top.tool.path, input.trim());
             }
           }}
           placeholder="Paste a token, some Base64, or anything else…"
@@ -65,7 +66,7 @@ export const Home = () => {
                   <button
                     key={tool.id}
                     type="button"
-                    onClick={() => go(tool.slug, input.trim())}
+                    onClick={() => go(tool.path, input.trim())}
                     className={cn(
                       'group flex h-11 items-center gap-3 rounded-md border px-3 text-left transition-colors duration-(--duration-fast)',
                       index === 0
@@ -75,7 +76,7 @@ export const Home = () => {
                   >
                     <Icon size={14} className="text-fg-subtle shrink-0" aria-hidden />
                     <span className="text-fg text-xs font-medium">{detection.action}</span>
-                    <span className="text-2xs text-fg-subtle truncate">/{tool.slug}</span>
+                    <span className="text-2xs text-fg-subtle truncate font-mono">{tool.path}</span>
                     {index === 0 ? (
                       <Kbd className="ml-auto">
                         <CornerDownLeft size={10} aria-hidden />
@@ -90,20 +91,30 @@ export const Home = () => {
                   </button>
                 );
               })
-            : tools.map((tool) => {
+            : tools.flatMap((tool) => {
                 const Icon = tool.icon;
-                return (
+                return viewsOf(tool).map((view, index) => (
                   <Link
-                    key={tool.id}
-                    to={`/${tool.slug}`}
+                    key={view.id}
+                    to={view.path}
                     className="group hover:border-border hover:bg-surface flex h-11 items-center gap-3 rounded-md border border-transparent px-3 transition-colors duration-(--duration-fast)"
                   >
-                    <Icon size={14} className="text-fg-subtle shrink-0" aria-hidden />
-                    <span className="text-fg text-xs font-medium">{tool.name}</span>
-                    <span className="text-2xs text-fg-subtle truncate">{tool.summary}</span>
-                    <span className="text-2xs text-fg-subtle ml-auto font-mono">/{tool.slug}</span>
+                    {index === 0 ? (
+                      <Icon size={14} className="text-fg-subtle shrink-0" aria-hidden />
+                    ) : (
+                      <CornerDownRight
+                        size={13}
+                        className="text-fg-subtle ml-1 shrink-0"
+                        aria-hidden
+                      />
+                    )}
+                    <span className="text-fg text-xs font-medium">
+                      {index === 0 ? tool.name : view.name}
+                    </span>
+                    <span className="text-2xs text-fg-subtle truncate">{view.summary}</span>
+                    <span className="text-2xs text-fg-subtle ml-auto font-mono">{view.path}</span>
                   </Link>
-                );
+                ));
               })}
         </div>
 

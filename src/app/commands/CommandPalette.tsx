@@ -5,8 +5,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Kbd } from '@/components/ui/Kbd';
 import { cn } from '@/lib/cn';
 import { setPendingInput } from '@/lib/handoff';
-import { detectTools, searchTools } from '@/tools/registry';
-import type { ToolDefinition } from '@/tools/types';
+import { detectTools, searchViews } from '@/tools/registry';
+import type { ToolDefinition, ToolPath } from '@/tools/types';
 
 /** Past this length a query stops being a tool name and starts being content. */
 const CONTENT_THRESHOLD = 24;
@@ -14,6 +14,7 @@ const CONTENT_THRESHOLD = 24;
 type CommandItem = {
   key: string;
   tool: ToolDefinition;
+  path: ToolPath;
   label: string;
   hint: string;
   /** Content to hand to the workspace on select, if any. */
@@ -36,6 +37,7 @@ const buildSections = (query: string): Section[] => {
         items: matches.map(({ tool, detection }) => ({
           key: `input-${tool.id}`,
           tool,
+          path: tool.path,
           label: detection.action,
           hint: tool.name,
           payload: trimmed,
@@ -44,16 +46,18 @@ const buildSections = (query: string): Section[] => {
     }
   }
 
-  const found = searchTools(trimmed);
+  const found = searchViews(trimmed);
   if (found.length > 0) {
     sections.push({
       id: 'tools',
       heading: 'Tools',
-      items: found.map((tool) => ({
-        key: `tool-${tool.id}`,
+      items: found.map(({ tool, view }) => ({
+        key: `view-${view.id}`,
         tool,
-        label: tool.name,
-        hint: tool.summary,
+        path: view.path,
+        // A view reads as a continuation of its tool: "JSON · Compare".
+        label: view.path === tool.path ? tool.name : `${tool.name} · ${view.name}`,
+        hint: view.summary,
       })),
     });
   }
@@ -86,7 +90,7 @@ const Contents = ({ onClose }: { onClose: () => void }) => {
     if (!item) return;
     if (item.payload !== undefined) setPendingInput(item.payload);
     onClose();
-    void navigate({ to: `/${item.tool.slug}` });
+    void navigate({ to: item.path });
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {

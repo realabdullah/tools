@@ -32,6 +32,24 @@ const jwtRoute = createRoute({
   ),
 });
 
+const jsonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/json',
+  component: lazyRouteComponent(
+    () => import('@/tools/json/components/JsonWorkspace'),
+    'JsonWorkspace',
+  ),
+});
+
+const jsonCompareRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/json/compare',
+  component: lazyRouteComponent(
+    () => import('@/tools/json/components/JsonCompareWorkspace'),
+    'JsonCompareWorkspace',
+  ),
+});
+
 const base64Route = createRoute({
   getParentRoute: () => rootRoute,
   path: '/base64',
@@ -41,7 +59,13 @@ const base64Route = createRoute({
   ),
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, jwtRoute, base64Route]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  jwtRoute,
+  base64Route,
+  jsonRoute,
+  jsonCompareRoute,
+]);
 
 export const router = createRouter({
   routeTree,

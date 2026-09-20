@@ -2,7 +2,8 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { Kbd } from '@/components/ui/Kbd';
 import { modifierLabel } from '@/hooks/useHotkey';
-import { toolBySlug } from '@/tools/registry';
+import { toolByPath } from '@/tools/registry';
+import { ViewTabs } from './ViewTabs';
 import { Wordmark } from './Wordmark';
 
 /**
@@ -11,7 +12,7 @@ import { Wordmark } from './Wordmark';
  */
 export const TopBar = ({ onOpenCommand }: { onOpenCommand: () => void }) => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const current = toolBySlug(pathname.replace(/^\//, '').split('/')[0] ?? '');
+  const current = toolByPath(pathname);
 
   return (
     <header className="border-border flex h-11 shrink-0 items-center gap-1 border-b px-3 sm:px-4">
@@ -25,18 +26,21 @@ export const TopBar = ({ onOpenCommand }: { onOpenCommand: () => void }) => {
       </Link>
 
       {current ? (
-        <div className="flex min-w-0 items-center gap-1.5 pl-1">
-          <span className="text-fg-subtle" aria-hidden>
-            /
-          </span>
-          <span className="text-fg truncate text-xs font-medium">{current.name}</span>
-        </div>
+        <>
+          <div className="flex min-w-0 items-center gap-1.5 pl-1">
+            <span className="text-fg-subtle" aria-hidden>
+              /
+            </span>
+            <span className="text-fg truncate text-xs font-medium">{current.name}</span>
+          </div>
+          <ViewTabs tool={current} pathname={pathname} />
+        </>
       ) : null}
 
       <button
         type="button"
         onClick={onOpenCommand}
-        className="group border-border bg-surface text-2xs text-fg-subtle hover:border-border-strong hover:text-fg-muted ml-auto flex h-7 items-center gap-2 rounded-sm border pr-1.5 pl-2 transition-colors"
+        className="group border-border bg-surface text-2xs text-fg-subtle hover:border-border-strong hover:text-fg-muted ml-auto flex h-7 shrink-0 items-center gap-2 rounded-sm border pr-1.5 pl-2 transition-colors"
       >
         <Search size={12} aria-hidden />
         <span className="hidden sm:inline">Search tools</span>
