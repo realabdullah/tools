@@ -40,7 +40,14 @@ export type TreeRow =
  */
 export const CHILD_LIMIT = 200;
 
-type BuildOptions = { childLimit?: number };
+type BuildOptions = {
+  childLimit?: number;
+  /**
+   * When present, only these paths are rendered. Used by search to show the
+   * hits and the branches leading to them, and nothing else.
+   */
+  visible?: ReadonlySet<string> | undefined;
+};
 
 export const buildRows = (
   root: JsonValue,
@@ -48,6 +55,7 @@ export const buildRows = (
   options: BuildOptions = {},
 ): TreeRow[] => {
   const limit = options.childLimit ?? CHILD_LIMIT;
+  const visible = options.visible;
   const rows: TreeRow[] = [];
 
   const walk = (
@@ -79,9 +87,11 @@ export const buildRows = (
 
     if (!isExpanded || !container) return;
 
-    const entries = entriesOf(value);
-    const shown = Math.min(entries.length, limit);
     const isIndexed = Array.isArray(value);
+    const entries = entriesOf(value).filter(
+      ([childLabel]) => visible === undefined || visible.has(joinPath(path, childLabel, isIndexed)),
+    );
+    const shown = Math.min(entries.length, limit);
 
     for (let index = 0; index < shown; index += 1) {
       const entry = entries[index];
