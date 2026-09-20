@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+dist
+coverage
+e2e
+playwright-report
+test-results
+.claude
+*.md
+!README.md
+.DS_Store
+.env
+.env.*
+Dockerfile
+.dockerignore
