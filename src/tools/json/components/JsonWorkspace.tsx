@@ -1,5 +1,5 @@
-import { ArrowDownAZ, CornerDownRight, Eraser, Unlink } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { ArrowDownAZ, CornerDownRight, Eraser, Unlink, Wrench } from 'lucide-react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Panel } from '@/components/ui/Panel';
@@ -10,15 +10,18 @@ import { formatJson, summarise, type IndentStyle } from '../lib/format';
 import { findMatches } from '../lib/matches';
 import { parseJson } from '../lib/parse';
 import { queryJson } from '../lib/query';
+import { needsRepair, repairJson } from '../lib/repair';
+import { isTabular, type TableSort } from '../lib/table';
 import { searchJson, EMPTY_SEARCH } from '../lib/search';
 import { sortKeys, unwrapEncoded } from '../lib/transform';
 import { allContainerPaths, defaultExpanded } from '../lib/tree';
 import type { JsonValue } from '../lib/types';
 import { JsonEditor } from './JsonEditor';
+import { JsonTable } from './JsonTable';
 import { JsonTree } from './JsonTree';
 import { Toolbar } from './Toolbar';
 
-type View = 'tree' | 'raw';
+type View = 'tree' | 'table' | 'raw';
 
 /**
  * One box.
@@ -33,6 +36,7 @@ export const JsonWorkspace = () => {
   const [view, setView] = useState<View>('tree');
   const [indent, setIndent] = useState<IndentStyle>('2');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<TableSort>(null);
   const [activeMatch, setActiveMatch] = useState(0);
   const [filter, setFilter] = useState('');
 
@@ -135,8 +139,27 @@ export const JsonWorkspace = () => {
 
   const encoded = document === null ? null : unwrapEncoded(document);
 
-  const showTree = view === 'tree' && result !== null;
-  const emptyFilter = view === 'tree' && result === null && filtering && queried?.ok === true;
+  /**
+   * Repair is offered only when the document does not parse and a rewrite
+   * would actually produce something that does — never as a button that might
+   * mangle a document which is already fine.
+   */
+  const repair = useMemo(() => {
+    if (document !== null || trimmed === '') return null;
+    const attempt = repairJson(source);
+    if (!needsRepair(source, attempt) || !parseJson(attempt.text).ok) return null;
+    return attempt;
+  }, [document, trimmed, source]);
+
+  const tabular = result !== null && isTabular(result);
+
+  // The table only exists for data shaped like a table, so the option appears
+  // only when there is one to show, and falls back when the shape changes.
+  const effectiveView: View = view === 'table' && !tabular ? 'tree' : view;
+  const showTree = effectiveView === 'tree' && result !== null;
+  const showTable = effectiveView === 'table' && result !== null;
+  const emptyFilter =
+    effectiveView !== 'raw' && result === null && filtering && queried?.ok === true;
 
   /**
    * Indentation applies the moment it is chosen.
@@ -153,7 +176,7 @@ export const JsonWorkspace = () => {
   };
 
   const tools =
-    view === 'raw' ? (
+    effectiveView === 'raw' ? (
       <>
         <SegmentedControl
           label="Indentation"
@@ -207,13 +230,16 @@ export const JsonWorkspace = () => {
             <>
               <SegmentedControl
                 label="View"
-                value={view}
+                value={effectiveView}
                 onChange={(next) => {
                   setView(next);
                   setActiveMatch(0);
                 }}
                 options={[
                   { value: 'tree', label: 'tree', title: 'Browse the structure' },
+                  ...(tabular
+                    ? [{ value: 'table' as const, label: 'table', title: 'Rows and columns' }]
+                    : []),
                   { value: 'raw', label: 'raw', title: 'Read and edit the text' },
                 ]}
               />
@@ -248,7 +274,9 @@ export const JsonWorkspace = () => {
           )}
 
           <div className="min-h-0 flex-1">
-            {showTree ? (
+            {showTable ? (
+              <JsonTable value={result} sort={sort} onSort={setSort} query={search} />
+            ) : showTree ? (
               <JsonTree
                 value={result}
                 expanded={expanded}
@@ -272,7 +300,23 @@ export const JsonWorkspace = () => {
           </div>
 
           {error ? (
-            <ErrorStrip line={error.line} column={error.column} message={error.message} />
+            <ErrorStrip
+              line={error.line}
+              column={error.column}
+              message={error.message}
+              repair={
+                repair ? (
+                  <Button
+                    variant="subtle"
+                    onClick={() => setSource(repair.text)}
+                    title={repair.repairs.map((entry) => entry.description).join(' · ')}
+                  >
+                    <Wrench size={12} aria-hidden />
+                    Repair
+                  </Button>
+                ) : null
+              }
+            />
           ) : null}
         </Panel>
       </div>
@@ -290,10 +334,13 @@ const ErrorStrip = ({
   line,
   column,
   message,
+  repair,
 }: {
   line: number;
   column: number;
   message: string;
+  /** The repair offer, when a rewrite would actually fix this document. */
+  repair: ReactNode;
 }) => (
   <div
     role="status"
@@ -304,5 +351,6 @@ const ErrorStrip = ({
       <CornerDownRight size={11} aria-hidden />
       line {line}, column {column}
     </span>
+    {repair}
   </div>
 );

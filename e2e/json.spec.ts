@@ -13,9 +13,20 @@ const DOC = JSON.stringify(
   2,
 );
 
-/** Types into the CodeMirror surface, which is contenteditable, not a textarea. */
+/**
+ * Types into the CodeMirror surface, which is contenteditable, not a textarea.
+ * The editor is only on screen when there is nothing to browse, so switch to
+ * the raw view first whenever a document is already loaded.
+ */
 const write = async (page: Page, text: string) => {
+  // Wait for the workspace itself first: `count()` does not auto-wait, so on a
+  // lazily loaded route it would otherwise report "no editor" before mount.
+  await page.getByRole('radio', { name: 'tree' }).waitFor();
+
   const content = page.locator('.cm-content');
+  if (!(await content.isVisible())) {
+    await page.getByRole('radio', { name: 'raw' }).click();
+  }
   await content.click();
   await page.keyboard.press('ControlOrMeta+a');
   await content.fill(text);
@@ -233,4 +244,78 @@ test('a very large array is bounded rather than rendered in full', async ({ page
 
   await tree(page).getByText('"items"').click();
   await expect(page.getByText(/800 more/)).toBeVisible();
+});
+
+const BROKEN = `{
+  // service config
+  name: 'billing',
+  replicas: 2,
+  hosts: ['a.example.com', 'b.example.com',],
+  limits: {rps: 100, burst: None},
+}`;
+
+const RECORDS = JSON.stringify([
+  { id: 3, name: 'Grace Hopper', role: 'admin', score: 91.5 },
+  { id: 1, name: 'Ada Løvelace', role: 'dev', score: 99.2, tags: ['x'] },
+  { id: 2, name: 'Alan Turing', role: 'dev', score: 97 },
+]);
+
+test('a document broken several ways is repaired in one click', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, BROKEN);
+
+  await expect(page.getByText('Comments are not allowed in JSON')).toBeVisible();
+  await page.getByRole('button', { name: 'Repair' }).click();
+
+  const tree = page.getByRole('tree', { name: 'JSON tree' });
+  await expect(tree.getByText('"billing"')).toBeVisible();
+  await expect(tree.getByText('null')).toBeVisible();
+  await expect(page.locator('.cm-lintRange-error')).toHaveCount(0);
+});
+
+test('repair is not offered for a document that already parses', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"a": 1}');
+  await expect(page.getByRole('button', { name: 'Repair' })).toHaveCount(0);
+});
+
+test('an array of objects can be read as a table', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+
+  await page.getByRole('radio', { name: 'table' }).click();
+
+  await expect(page.getByRole('columnheader', { name: 'name' })).toBeVisible();
+  await expect(page.getByRole('row')).toHaveCount(4); // header plus three records
+  // A key only one record has still gets a column, and the others show empty.
+  await expect(page.getByRole('columnheader', { name: 'tags' })).toBeVisible();
+});
+
+test('the table option appears only for data shaped like a table', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"a": 1}');
+  await expect(page.getByRole('radio', { name: 'table' })).toHaveCount(0);
+
+  await write(page, RECORDS);
+  await expect(page.getByRole('radio', { name: 'table' })).toBeVisible();
+});
+
+test('a column sorts ascending, descending, then back to document order', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+  await page.getByRole('radio', { name: 'table' }).click();
+
+  // The first cell of each row is the index header, so the id is the first td.
+  const ids = () => page.locator('tbody tr td:nth-of-type(1)');
+  await expect(ids()).toHaveText(['3', '1', '2']);
+
+  const header = page.getByRole('button', { name: 'id' });
+  await header.click();
+  await expect(ids()).toHaveText(['1', '2', '3']);
+
+  await header.click();
+  await expect(ids()).toHaveText(['3', '2', '1']);
+
+  await header.click();
+  await expect(ids()).toHaveText(['3', '1', '2']);
 });
