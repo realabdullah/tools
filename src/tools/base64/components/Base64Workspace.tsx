@@ -1,102 +1,168 @@
-import { ArrowLeftRight, Eraser, WandSparkles } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ArrowLeftRight, Eraser, FileUp, WandSparkles } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Editor } from '@/components/ui/Editor';
 import { Panel } from '@/components/ui/Panel';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { byteLength, formatBytes } from '@/lib/bytes';
+import { cn } from '@/lib/cn';
 import { takePendingInput } from '@/lib/handoff';
 import { formatJson } from '@/tools/json/lib/format';
 import { parseIfJson } from '@/tools/json/lib/transform';
 import {
-  decodeText,
-  encodeText,
+  decodeToBytes,
+  encodeBytes,
   looksLikeBase64,
   usesUrlAlphabet,
   type Base64Variant,
 } from '../lib/base64';
+import { parseDataUri, readFile, toDataUri, wrapLines, type BinarySource } from '../lib/files';
+import { BinaryResult } from './BinaryResult';
+import { FileSource } from './FileSource';
 
 type Mode = 'encode' | 'decode';
+type OutputForm = 'base64' | 'data-uri';
+
+const MIME_WIDTH = 76;
 
 /**
  * Input on the left, output on the right, and a mode that says which is which.
  *
- * An earlier version made both sides editable and inferred the direction. It
- * was fewer clicks and more guesswork: which pane held your input depended on
- * which you touched last. A named mode keeps the two roles fixed, and the swap
- * control between them round-trips in one move.
+ * Text is one kind of input. A file is the other, and it is the one Base64
+ * exists for: an image becomes a data URI, and a payload becomes a file again.
+ * Nothing is uploaded — the bytes are read in the tab.
  */
 export const Base64Workspace = () => {
   const handed = useMemo(() => takePendingInput(), []);
   const [mode, setMode] = useState<Mode>(() =>
-    handed !== null && looksLikeBase64(handed) && decodeText(handed).ok ? 'decode' : 'encode',
+    handed !== null && looksLikeBase64(handed) ? 'decode' : 'encode',
   );
   const [input, setInput] = useState(handed ?? '');
+  const [file, setFile] = useState<BinarySource | null>(null);
   const [variant, setVariant] = useState<Base64Variant>(() =>
     handed !== null && usesUrlAlphabet(handed) ? 'url' : 'standard',
   );
+  const [outputForm, setOutputForm] = useState<OutputForm>('base64');
+  const [wrapped, setWrapped] = useState(false);
   const [prettyJson, setPrettyJson] = useState(true);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
 
-  const result = useMemo(() => {
-    if (input === '') return { output: '', error: null };
-    if (mode === 'encode') return { output: encodeText(input, variant), error: null };
+  // --- encoding ------------------------------------------------------------
 
-    const decoded = decodeText(input);
-    return decoded.ok
-      ? { output: decoded.value, error: null }
-      : { output: '', error: decoded.message };
-  }, [input, mode, variant]);
+  const encoded = useMemo(() => {
+    if (mode !== 'encode') return '';
+    const bytes = file ? file.bytes : new TextEncoder().encode(input);
+    if (bytes.length === 0) return '';
 
-  /**
-   * The most common thing anyone Base64-decodes is a JSON payload, so when the
-   * result is one it is laid out by default. The toggle is there because the
-   * bytes that were actually decoded are the unformatted ones.
-   */
+    const base64 =
+      file && outputForm === 'data-uri' ? toDataUri(file, variant) : encodeBytes(bytes, variant);
+    return wrapped ? wrapLines(base64, MIME_WIDTH) : base64;
+  }, [mode, file, input, variant, outputForm, wrapped]);
+
+  // --- decoding ------------------------------------------------------------
+
+  const decoded = useMemo(() => {
+    if (mode !== 'decode' || input.trim() === '') {
+      return { text: '', bytes: null, mediaType: '', error: null };
+    }
+
+    const uri = parseDataUri(input);
+    const payload = uri?.base64 ?? input;
+    const bytes = decodeToBytes(payload);
+    if (!bytes.ok) return { text: '', bytes: null, mediaType: '', error: bytes.message };
+
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes.bytes);
+      return { text, bytes: null, mediaType: uri?.mediaType ?? '', error: null };
+    } catch {
+      // Not text — which is the normal case for an image or a PDF.
+      return {
+        text: '',
+        bytes: bytes.bytes,
+        mediaType: uri?.mediaType ?? 'application/octet-stream',
+        error: null,
+      };
+    }
+  }, [mode, input]);
+
   const decodedJson = useMemo(
-    () => (mode === 'decode' ? parseIfJson(result.output) : null),
-    [mode, result.output],
+    () => (mode === 'decode' ? parseIfJson(decoded.text) : null),
+    [mode, decoded.text],
   );
-  const output = decodedJson !== null && prettyJson ? formatJson(decodedJson, '2') : result.output;
+  const decodedText =
+    decodedJson !== null && prettyJson ? formatJson(decodedJson, '2') : decoded.text;
 
-  /** Encoding side: the text you are about to encode can be laid out first. */
-  const inputJson = useMemo(() => (mode === 'encode' ? parseIfJson(input) : null), [mode, input]);
+  const inputJson = useMemo(
+    () => (mode === 'encode' && !file ? parseIfJson(input) : null),
+    [mode, file, input],
+  );
 
-  /**
-   * Swapping is a round trip, not just a relabelling: the result you were
-   * looking at becomes the thing you are now working from.
-   */
+  const output = mode === 'encode' ? encoded : decodedText;
+  const inputLabel = mode === 'encode' ? (file ? 'File' : 'Text') : 'Base64';
+  const outputLabel = mode === 'encode' ? 'Base64' : decoded.bytes ? 'Bytes' : 'Text';
+
+  const onFiles = (files: FileList | null) => {
+    const chosen = files?.[0];
+    if (!chosen) return;
+    void readFile(chosen).then((source) => {
+      setMode('encode');
+      setFile(source);
+      setOutputForm('data-uri');
+    });
+  };
+
   const swap = () => {
-    setMode(mode === 'encode' ? 'decode' : 'encode');
+    const next = mode === 'encode' ? 'decode' : 'encode';
+    setMode(next);
+    setFile(null);
     if (output !== '') setInput(output);
   };
 
-  const inputLabel = mode === 'encode' ? 'Text' : 'Base64';
-  const outputLabel = mode === 'encode' ? 'Base64' : 'Text';
-
-  // Only meaningful when Base64 is being written: decoding accepts either
-  // alphabet without being told which it is looking at.
-  const alphabet = (
-    <SegmentedControl
-      label="Base64 alphabet"
-      value={variant}
-      onChange={setVariant}
-      options={[
-        { value: 'standard', label: 'std', title: 'Standard alphabet (+/ with padding)' },
-        { value: 'url', label: 'url', title: 'URL-safe alphabet (-_ , unpadded)' },
-      ]}
-    />
-  );
+  const clearInput = () => {
+    setInput('');
+    setFile(null);
+  };
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto">
+    <div
+      className="scroll-thin h-full overflow-y-auto"
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        onFiles(event.dataTransfer.files);
+      }}
+    >
+      {/* The visible button is the control; this only carries the picker, so
+          it stays out of the accessibility tree rather than duplicating it. */}
+      <input
+        ref={picker}
+        type="file"
+        aria-hidden
+        tabIndex={-1}
+        className="sr-only"
+        onChange={(event) => onFiles(event.target.files)}
+      />
+
       <div className="mx-auto flex h-full w-full max-w-[72rem] flex-col px-3 py-3 sm:px-4 sm:py-4">
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(11rem,1fr)_auto_minmax(11rem,1fr)] gap-2 lg:grid-cols-[1fr_auto_1fr] lg:grid-rows-1 lg:gap-3">
+        <div
+          className={cn(
+            'grid min-h-0 flex-1 grid-rows-[minmax(11rem,1fr)_auto_minmax(11rem,1fr)] gap-2',
+            'lg:grid-cols-[1fr_auto_1fr] lg:grid-rows-1 lg:gap-3',
+            dragging && 'outline-accent rounded-md outline-2 outline-offset-4',
+          )}
+        >
           <Panel
             label={inputLabel}
-            tone={result.error ? 'danger' : 'default'}
+            tone={decoded.error ? 'danger' : 'default'}
             meta={
-              input === '' ? null : (
+              file ? null : input === '' ? null : (
                 <span data-numeric className="hidden sm:inline">
                   {input.length.toLocaleString()} chars
                   {mode === 'encode' ? ` · ${formatBytes(byteLength(input))}` : ''}
@@ -108,12 +174,26 @@ export const Base64Workspace = () => {
                 <SegmentedControl
                   label="Direction"
                   value={mode}
-                  onChange={(next) => setMode(next)}
+                  onChange={(next) => {
+                    setMode(next);
+                    setFile(null);
+                  }}
                   options={[
-                    { value: 'encode', label: 'encode', title: 'Text to Base64' },
-                    { value: 'decode', label: 'decode', title: 'Base64 to text' },
+                    { value: 'encode', label: 'encode', title: 'Text or a file to Base64' },
+                    { value: 'decode', label: 'decode', title: 'Base64 to text or a file' },
                   ]}
                 />
+                {mode === 'encode' && !file ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Choose a file"
+                    title="Encode a file — or drop one anywhere"
+                    onClick={() => picker.current?.click()}
+                  >
+                    <FileUp size={12} aria-hidden />
+                  </Button>
+                ) : null}
                 {inputJson !== null ? (
                   <Button
                     variant="ghost"
@@ -125,13 +205,8 @@ export const Base64Workspace = () => {
                     Format
                   </Button>
                 ) : null}
-                {input === '' ? null : (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Clear input"
-                    onClick={() => setInput('')}
-                  >
+                {input === '' && !file ? null : (
+                  <Button variant="ghost" size="icon" aria-label="Clear input" onClick={clearInput}>
                     <Eraser size={12} aria-hidden />
                   </Button>
                 )}
@@ -139,21 +214,27 @@ export const Base64Workspace = () => {
             }
             bodyClassName="flex flex-col"
           >
-            <Editor
-              autoFocus
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={mode === 'encode' ? 'Type or paste text…' : 'Paste Base64…'}
-              aria-label={mode === 'encode' ? 'Text to encode' : 'Base64 to decode'}
-              aria-invalid={result.error !== null}
-              className={mode === 'encode' ? 'break-words' : undefined}
-            />
-            {result.error ? (
+            {file ? (
+              <FileSource file={file} onClear={() => setFile(null)} />
+            ) : (
+              <Editor
+                autoFocus
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder={
+                  mode === 'encode' ? 'Type, paste, or drop a file…' : 'Paste Base64 or a data URI…'
+                }
+                aria-label={mode === 'encode' ? 'Text to encode' : 'Base64 to decode'}
+                aria-invalid={decoded.error !== null}
+                className={mode === 'encode' ? 'break-words' : undefined}
+              />
+            )}
+            {decoded.error ? (
               <p
                 role="status"
                 className="border-danger/30 text-2xs text-danger shrink-0 border-t px-3 py-2"
               >
-                {result.error}
+                {decoded.error}
               </p>
             ) : null}
           </Panel>
@@ -161,12 +242,11 @@ export const Base64Workspace = () => {
           <div className="flex items-center justify-center lg:w-9">
             <Button
               variant="subtle"
+              size="icon"
               onClick={swap}
               aria-label={`Swap to ${mode === 'encode' ? 'decode' : 'encode'}`}
-              size="icon"
-              title={`Swap — ${outputLabel.toLowerCase()} becomes the input`}
+              title={`Swap — the result becomes the input`}
             >
-              {/* The panels stack on a phone and sit side by side above it. */}
               <ArrowLeftRight size={13} aria-hidden className="rotate-90 lg:rotate-0" />
             </Button>
           </div>
@@ -174,7 +254,7 @@ export const Base64Workspace = () => {
           <Panel
             label={outputLabel}
             meta={
-              output === '' ? null : (
+              output === '' && !decoded.bytes ? null : decoded.bytes ? null : (
                 <span data-numeric className="hidden sm:inline">
                   {output.length.toLocaleString()} chars
                 </span>
@@ -182,6 +262,47 @@ export const Base64Workspace = () => {
             }
             actions={
               <>
+                {mode === 'encode' && file ? (
+                  <SegmentedControl
+                    label="Output form"
+                    value={outputForm}
+                    onChange={setOutputForm}
+                    options={[
+                      { value: 'base64', label: 'raw', title: 'The Base64 on its own' },
+                      { value: 'data-uri', label: 'uri', title: 'A data: URI, ready to embed' },
+                    ]}
+                  />
+                ) : null}
+                {mode === 'encode' ? (
+                  <>
+                    <SegmentedControl
+                      label="Line wrapping"
+                      value={wrapped ? 'wrap' : 'single'}
+                      onChange={(next) => setWrapped(next === 'wrap')}
+                      options={[
+                        { value: 'single', label: '1 line', title: 'One unbroken line' },
+                        {
+                          value: 'wrap',
+                          label: '76',
+                          title: 'Wrapped at 76 characters, as MIME requires',
+                        },
+                      ]}
+                    />
+                    <SegmentedControl
+                      label="Base64 alphabet"
+                      value={variant}
+                      onChange={setVariant}
+                      options={[
+                        {
+                          value: 'standard',
+                          label: 'std',
+                          title: 'Standard alphabet (+/ with padding)',
+                        },
+                        { value: 'url', label: 'url', title: 'URL-safe alphabet (-_ , unpadded)' },
+                      ]}
+                    />
+                  </>
+                ) : null}
                 {decodedJson !== null ? (
                   <SegmentedControl
                     label="Decoded JSON layout"
@@ -193,19 +314,28 @@ export const Base64Workspace = () => {
                     ]}
                   />
                 ) : null}
-                {mode === 'encode' ? alphabet : null}
-                <CopyButton value={output} label={outputLabel.toLowerCase()} />
+                <CopyButton
+                  value={output}
+                  label={outputLabel.toLowerCase()}
+                  disabled={output === ''}
+                />
               </>
             }
           >
-            <Editor
-              readOnly
-              value={output}
-              placeholder={mode === 'encode' ? 'Base64 appears here' : 'Decoded text appears here'}
-              aria-label={`${outputLabel} output`}
-              tabIndex={output === '' ? -1 : 0}
-              className={mode === 'decode' ? 'break-words' : undefined}
-            />
+            {decoded.bytes ? (
+              <BinaryResult bytes={decoded.bytes} mediaType={decoded.mediaType} />
+            ) : (
+              <Editor
+                readOnly
+                value={output}
+                placeholder={
+                  mode === 'encode' ? 'Base64 appears here' : 'Decoded text appears here'
+                }
+                aria-label={`${outputLabel} output`}
+                tabIndex={output === '' ? -1 : 0}
+                className={mode === 'decode' ? 'break-words' : undefined}
+              />
+            )}
           </Panel>
         </div>
       </div>

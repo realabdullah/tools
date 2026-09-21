@@ -128,3 +128,60 @@ test('JSON can be laid out before it is encoded', async ({ page }) => {
   await input(page).fill('just some plain text');
   await expect(page.getByRole('button', { name: 'Format the JSON being encoded' })).toHaveCount(0);
 });
+
+/** A 12x12 PNG, small enough to inline and real enough to decode. */
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAJ0lEQVR42mP8z8BQz0AEYBxVSF' +
+  '+FjLgU/idCIeOowtGgGVU4HBQCAI5OIRUUmvUgAAAAAElFTkSuQmCC';
+
+test('Base64 that decodes to bytes offers the file, not an error', async ({ page }) => {
+  await page.goto('/base64');
+  await page.getByRole('radio', { name: 'decode' }).click();
+  await input(page).fill(PNG_BASE64);
+
+  await expect(page.getByRole('heading', { name: 'Bytes' })).toBeVisible();
+  // The type and size are reported, across two elements.
+  await expect(page.getByText(/png/)).toBeVisible();
+  await expect(page.getByText('96 B')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
+
+  // The image is decoded and shown, not merely described.
+  const preview = page.getByRole('img', { name: 'Decoded image' });
+  await expect(preview).toBeVisible();
+  expect(await preview.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(12);
+});
+
+test('a data URI is understood as well as bare Base64', async ({ page }) => {
+  await page.goto('/base64');
+  await page.getByRole('radio', { name: 'decode' }).click();
+  await input(page).fill('data:text/plain;base64,aGVsbG8gZnJvbSB0aGUgdGVybWluYWw=');
+
+  await expect(output(page)).toHaveValue(SAMPLE_TEXT);
+});
+
+test('a file becomes a data URI, which can be wrapped for MIME', async ({ page }) => {
+  await page.goto('/base64');
+
+  await page.getByRole('button', { name: 'Choose a file' }).click();
+  await page.setInputFiles('input[type="file"]', {
+    name: 'swatch.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PNG_BASE64, 'base64'),
+  });
+
+  await expect(page.getByRole('heading', { name: 'File' })).toBeVisible();
+  await expect(page.getByText('swatch.png')).toBeVisible();
+  await expect(output(page)).toHaveValue(/^data:image\/png;base64,/);
+
+  // The raw form drops the URI prefix.
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(output(page)).not.toHaveValue(/^data:/);
+
+  // Wrapping is exactly a line break every 76 characters, losing nothing.
+  const single = await output(page).inputValue();
+  await page.getByRole('radio', { name: '76' }).click();
+  const wrapped = await output(page).inputValue();
+
+  expect(wrapped.split('\n').join('')).toBe(single);
+  expect(Math.max(...wrapped.split('\n').map((line) => line.length))).toBeLessThanOrEqual(76);
+});
