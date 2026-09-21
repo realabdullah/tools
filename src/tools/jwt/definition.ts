@@ -10,6 +10,16 @@ export const jwtTool: ToolDefinition = {
   icon: KeyRound,
   keywords: ['jwt', 'token', 'json web token', 'claims', 'bearer', 'decode', 'jws'],
   aliases: ['token'],
+  defaultViewName: 'Inspect',
+  views: [
+    {
+      id: 'jwt-build',
+      path: '/jwt/build',
+      name: 'Build',
+      summary: 'Compose and sign a token',
+      keywords: ['sign', 'encode', 'build', 'create', 'generate', 'issue'],
+    },
+  ],
   detect: (input) =>
     looksLikeJwt(input) ? { confidence: 'exact', action: 'Inspect as a JWT' } : null,
 };

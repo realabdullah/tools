@@ -32,6 +32,15 @@ const jwtRoute = createRoute({
   ),
 });
 
+const jwtBuildRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/jwt/build',
+  component: lazyRouteComponent(
+    () => import('@/tools/jwt/components/JwtBuildWorkspace'),
+    'JwtBuildWorkspace',
+  ),
+});
+
 const jsonRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/json',
@@ -62,6 +71,7 @@ const base64Route = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   jwtRoute,
+  jwtBuildRoute,
   base64Route,
   jsonRoute,
   jsonCompareRoute,

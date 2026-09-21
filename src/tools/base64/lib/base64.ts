@@ -26,12 +26,16 @@ const binaryFromBytes = (bytes: Uint8Array): string => {
 const toUrlAlphabet = (value: string): string =>
   value.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 
-/** UTF-8 text -> Base64. `url` produces unpadded Base64URL (RFC 4648 §5). */
-export const encodeText = (text: string, variant: Base64Variant = 'standard'): string => {
-  if (text === '') return '';
-  const standard = btoa(binaryFromBytes(new TextEncoder().encode(text)));
+/** Bytes -> Base64. `url` produces unpadded Base64URL (RFC 4648 §5). */
+export const encodeBytes = (bytes: Uint8Array, variant: Base64Variant = 'standard'): string => {
+  if (bytes.length === 0) return '';
+  const standard = btoa(binaryFromBytes(bytes));
   return variant === 'url' ? toUrlAlphabet(standard) : standard;
 };
+
+/** UTF-8 text -> Base64. */
+export const encodeText = (text: string, variant: Base64Variant = 'standard'): string =>
+  encodeBytes(new TextEncoder().encode(text), variant);
 
 /** Strips whitespace and normalises Base64URL to the standard alphabet. */
 const normalise = (value: string): string =>
@@ -42,7 +46,9 @@ const BASE64_BODY = /^[A-Za-z0-9+/]*$/;
 /** Base64 or Base64URL -> bytes. Padding is optional; whitespace is ignored. */
 export const decodeToBytes = (
   value: string,
-): { ok: true; bytes: Uint8Array } | { ok: false; code: Base64ErrorCode; message: string } => {
+):
+  | { ok: true; bytes: Uint8Array<ArrayBuffer> }
+  | { ok: false; code: Base64ErrorCode; message: string } => {
   const body = normalise(value);
   if (body === '') return { ok: true, bytes: new Uint8Array() };
 

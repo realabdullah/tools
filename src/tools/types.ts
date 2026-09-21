@@ -28,7 +28,7 @@ export type Detection = {
  * tree: a new workspace is added here, in the registry and in the router, and
  * the compiler will not let you forget one of the three.
  */
-export type ToolPath = '/jwt' | '/base64' | '/json' | '/json/compare';
+export type ToolPath = '/jwt' | '/jwt/build' | '/base64' | '/json' | '/json/compare';
 
 /**
  * A second way of working with the same material.
