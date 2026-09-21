@@ -17,3 +17,6 @@ playwright-report
 test-results
 blob-report
 .playwright
+
+# local Claude tooling
+.claude/
