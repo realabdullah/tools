@@ -6,9 +6,21 @@ export const base64Tool: ToolDefinition = {
   id: 'base64',
   path: '/base64',
   name: 'Base64',
-  summary: 'Encode and decode, both directions at once',
+  summary: 'Encode and decode text, files and data URIs',
   icon: ArrowLeftRight,
-  keywords: ['base64', 'base64url', 'encode', 'decode', 'btoa', 'atob', 'utf-8'],
+  keywords: [
+    'base64',
+    'base64url',
+    'encode',
+    'decode',
+    'btoa',
+    'atob',
+    'utf-8',
+    'data uri',
+    'file',
+    'image',
+    'mime',
+  ],
   aliases: ['b64', 'atob', 'btoa'],
   detect: (input) => {
     // Anything typed can be *encoded*, so Base64 always has an answer. It only
