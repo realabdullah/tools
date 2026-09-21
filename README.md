@@ -94,6 +94,11 @@ a small tab group in the top bar, but only for the tool you are in, and only
 when it has more than one. This is how JSON stays one environment instead of
 fragmenting into a page per operation.
 
+**The document text is the single source of truth.** A tree edit parses,
+changes the value and writes the text back, so there is one undo stack for the
+whole workspace rather than one per surface — and CodeMirror's own history is
+deliberately switched off for the same reason.
+
 **Colour is split between status and syntax.** `--color-success` and friends
 mean something happened; `--color-syntax-*` means "this is a number". Reusing
 the status ramp for syntax made documents read like a status report.

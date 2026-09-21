@@ -242,7 +242,8 @@ test('a very large array is bounded rather than rendered in full', async ({ page
   await page.goto('/json');
   await write(page, JSON.stringify({ items: Array.from({ length: 1000 }, (_, i) => i) }));
 
-  await tree(page).getByText('"items"').click();
+  // The key text is editable, so expand by clicking the row's own summary.
+  await tree(page).getByText('[ 1,000 items ]').click();
   await expect(page.getByText(/800 more/)).toBeVisible();
 });
 
@@ -318,4 +319,152 @@ test('a column sorts ascending, descending, then back to document order', async 
 
   await header.click();
   await expect(ids()).toHaveText(['3', '1', '2']);
+});
+
+test('a value can be edited in the tree', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+
+  await tree(page).getByText('"Grace Hopper"').click();
+  const editor = page.getByRole('textbox', { name: 'Edit value' });
+  await editor.fill('Grace B. Hopper');
+  await editor.press('Enter');
+
+  await expect(tree(page).getByText('"Grace B. Hopper"')).toBeVisible();
+});
+
+test('escape abandons an edit', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+
+  await tree(page).getByText('"Grace Hopper"').click();
+  const editor = page.getByRole('textbox', { name: 'Edit value' });
+  await editor.fill('discard me');
+  await editor.press('Escape');
+
+  await expect(tree(page).getByText('"Grace Hopper"')).toBeVisible();
+});
+
+test('a property can be renamed, keeping its place', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"alpha": 1, "beta": 2, "gamma": 3}');
+
+  await tree(page).getByText('"beta"').click();
+  const editor = page.getByRole('textbox', { name: 'Edit property name' });
+  await editor.fill('middle');
+  await editor.press('Enter');
+
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(page.locator('.cm-content')).toContainText('"alpha"');
+  await expect(page.locator('.cm-content')).toContainText('"middle"');
+  // Order is preserved: the renamed key did not jump to the end.
+  const text = await page.locator('.cm-content').innerText();
+  expect(text.indexOf('middle')).toBeLessThan(text.indexOf('gamma'));
+});
+
+test('a boolean is a checkbox, and toggling it edits the document', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"active": false}');
+
+  const box = tree(page).getByRole('checkbox', { name: 'Toggle active' });
+  await expect(box).not.toBeChecked();
+  await box.check();
+
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(page.locator('.cm-content')).toContainText('"active": true');
+});
+
+test('edits can be undone and redone', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"active": false}');
+
+  await tree(page).getByRole('checkbox', { name: 'Toggle active' }).check();
+  await expect(tree(page).getByRole('checkbox', { name: 'Toggle active' })).toBeChecked();
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(tree(page).getByRole('checkbox', { name: 'Toggle active' })).not.toBeChecked();
+
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect(tree(page).getByRole('checkbox', { name: 'Toggle active' })).toBeChecked();
+});
+
+test('a row can be duplicated and removed from its menu', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"a": 1}');
+
+  await tree(page).getByRole('treeitem').filter({ hasText: '"a"' }).hover();
+  await page.getByRole('button', { name: 'Actions for $.a' }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate' }).click();
+
+  await expect(tree(page).getByText('"a copy"')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Actions for $["a copy"]' }).click();
+  await page.getByRole('menuitem', { name: 'Remove' }).click();
+  await expect(tree(page).getByText('"a copy"')).toHaveCount(0);
+});
+
+test('a value type can be changed from the menu', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"port": "8080"}');
+
+  await page.getByRole('button', { name: 'Actions for $.port' }).click();
+  await page.getByRole('menuitem', { name: 'number' }).click();
+
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(page.locator('.cm-content')).toContainText('"port": 8080');
+});
+
+test('a derived view cannot be edited', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+  await page.getByRole('textbox', { name: 'Filter by path' }).fill('[*].name');
+
+  // Clicking a filtered value must not open an editor onto a value that has
+  // nowhere to be written back to.
+  await tree(page).getByText('"Grace Hopper"').click();
+  await expect(page.getByRole('textbox', { name: 'Edit value' })).toHaveCount(0);
+});
+
+test('transform filters, sorts and picks, and only then commits', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+
+  await page.getByRole('button', { name: 'Transform' }).click();
+  await page.getByLabel('Filter field').selectOption('role');
+  await page.getByLabel('Filter value').fill('dev');
+  await page.getByLabel('Sort field').selectOption('score');
+  await page.getByLabel('Sort direction').selectOption('desc');
+
+  await expect(page.getByText('2 records after transform')).toBeVisible();
+  // The document itself is untouched until it is applied.
+  await expect(tree(page).getByText('"Grace Hopper"')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Apply to document' }).click();
+  await expect(page.getByLabel('Filter field')).toHaveCount(0);
+
+  await page.getByRole('radio', { name: 'raw' }).click();
+  const text = await page.locator('.cm-content').innerText();
+  expect(text).not.toContain('Grace');
+  expect(text.indexOf('Ada')).toBeLessThan(text.indexOf('Alan'));
+});
+
+test('a transform can be closed without changing anything', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, RECORDS);
+
+  await page.getByRole('button', { name: 'Transform' }).click();
+  await page.getByLabel('Filter field').selectOption('role');
+  await page.getByLabel('Filter value').fill('dev');
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await expect(tree(page).getByText('"Grace Hopper"')).toBeVisible();
+});
+
+test('a URL value can be opened', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"site": "https://example.com/docs"}');
+
+  await expect(
+    tree(page).getByRole('link', { name: 'Open https://example.com/docs' }),
+  ).toHaveAttribute('href', 'https://example.com/docs');
 });

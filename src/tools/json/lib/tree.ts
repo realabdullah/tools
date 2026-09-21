@@ -1,3 +1,4 @@
+import type { Path, PathSegment } from './edit';
 import { joinPath } from './query';
 import { childCount, entriesOf, isContainer, kindOf, type JsonKind, type JsonValue } from './types';
 
@@ -13,6 +14,8 @@ export type TreeRow =
       type: 'node';
       id: string;
       path: string;
+      /** The same location as keys and indices, which is what edits need. */
+      segments: Path;
       depth: number;
       label: string;
       labelKind: 'root' | 'key' | 'index';
@@ -61,6 +64,7 @@ export const buildRows = (
   const walk = (
     value: JsonValue,
     path: string,
+    segments: PathSegment[],
     depth: number,
     label: string,
     labelKind: 'root' | 'key' | 'index',
@@ -74,6 +78,7 @@ export const buildRows = (
       type: 'node',
       id: path,
       path,
+      segments,
       depth,
       label,
       labelKind,
@@ -100,6 +105,7 @@ export const buildRows = (
       walk(
         child,
         joinPath(path, childLabel, isIndexed),
+        [...segments, isIndexed ? Number(childLabel) : childLabel],
         depth + 1,
         childLabel,
         isIndexed ? 'index' : 'key',
@@ -117,7 +123,7 @@ export const buildRows = (
     }
   };
 
-  walk(root, '$', 0, '$', 'root', true);
+  walk(root, '$', [], 0, '$', 'root', true);
   return rows;
 };
 
@@ -180,13 +186,15 @@ export const allContainerPaths = (root: JsonValue, cap = 5000): Set<string> => {
 
 /** One-line stand-in for a collapsed container. */
 export const previewOf = (value: JsonValue): string => {
+  // Counts are grouped, as they are everywhere else: "1000 items" is a number
+  // to decode rather than read.
   if (Array.isArray(value)) {
     const count = value.length;
-    return count === 0 ? '[]' : `[ ${String(count)} ${count === 1 ? 'item' : 'items'} ]`;
+    return count === 0 ? '[]' : `[ ${count.toLocaleString()} ${count === 1 ? 'item' : 'items'} ]`;
   }
   if (value !== null && typeof value === 'object') {
     const count = Object.keys(value).length;
-    return count === 0 ? '{}' : `{ ${String(count)} ${count === 1 ? 'key' : 'keys'} }`;
+    return count === 0 ? '{}' : `{ ${count.toLocaleString()} ${count === 1 ? 'key' : 'keys'} }`;
   }
   return JSON.stringify(value) ?? String(value);
 };

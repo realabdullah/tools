@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap } from '@codemirror/commands';
 import { json } from '@codemirror/lang-json';
 import { bracketMatching, foldGutter, foldKeymap } from '@codemirror/language';
 import { linter, lintGutter } from '@codemirror/lint';
@@ -86,10 +86,11 @@ export const JsonEditor = ({ value, onChange, readOnly, search }: JsonEditorProp
           EditorView.lineWrapping,
           foldGutter(),
           lintGutter(),
-          history(),
           bracketMatching(),
           highlightActiveLine(),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap]),
+          // No history extension and no history keymap: undo belongs to the
+          // workspace, which owns the document that the tree also edits.
+          keymap.of([...defaultKeymap, ...foldKeymap]),
           json(),
           jsonDiagnostics,
           searchHighlighting,

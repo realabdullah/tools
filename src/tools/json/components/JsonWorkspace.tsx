@@ -1,11 +1,32 @@
-import { ArrowDownAZ, CornerDownRight, Eraser, Unlink, Wrench } from 'lucide-react';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import {
+  ArrowDownAZ,
+  CornerDownRight,
+  Download,
+  Eraser,
+  FolderOpen,
+  Redo2,
+  SlidersHorizontal,
+  Undo2,
+  Unlink,
+  Wrench,
+} from 'lucide-react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Panel } from '@/components/ui/Panel';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { useDocumentHistory } from '@/hooks/useDocumentHistory';
+import { useHotkey } from '@/hooks/useHotkey';
 import { byteLength, formatBytes } from '@/lib/bytes';
 import { takePendingInput } from '@/lib/handoff';
+import { appendTo, convertAt, duplicateAt, removeAt, renameAt, setAt, getAt } from '../lib/edit';
+import {
+  applyTransform,
+  EMPTY_TRANSFORM,
+  fieldsOf,
+  isEmptyTransform,
+  type TransformSpec,
+} from '../lib/transform-ops';
 import { formatJson, summarise, type IndentStyle } from '../lib/format';
 import { findMatches } from '../lib/matches';
 import { parseJson } from '../lib/parse';
@@ -18,7 +39,8 @@ import { allContainerPaths, defaultExpanded } from '../lib/tree';
 import type { JsonValue } from '../lib/types';
 import { JsonEditor } from './JsonEditor';
 import { JsonTable } from './JsonTable';
-import { JsonTree } from './JsonTree';
+import { JsonTree, type TreeEdit } from './JsonTree';
+import { TransformPanel } from './TransformPanel';
 import { Toolbar } from './Toolbar';
 
 type View = 'tree' | 'table' | 'raw';
@@ -32,11 +54,18 @@ type View = 'tree' | 'table' | 'raw';
  * tree or the text, and the text stays editable so pasting never needs a mode.
  */
 export const JsonWorkspace = () => {
-  const [source, setSource] = useState(() => takePendingInput() ?? '');
+  const history = useDocumentHistory(useMemo(() => takePendingInput() ?? '', []));
+  const source = history.value;
+  const setSource = useCallback((next: string) => history.set(next), [history]);
+  /** Typing is one undo step per burst, not one per keystroke. */
+  const onType = useCallback((next: string) => history.set(next, { coalesce: true }), [history]);
   const [view, setView] = useState<View>('tree');
   const [indent, setIndent] = useState<IndentStyle>('2');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<TableSort>(null);
+  const [transform, setTransform] = useState<TransformSpec>(EMPTY_TRANSFORM);
+  const [transforming, setTransforming] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const [activeMatch, setActiveMatch] = useState(0);
   const [filter, setFilter] = useState('');
 
@@ -59,10 +88,18 @@ export const JsonWorkspace = () => {
     return queried.matches.map((match) => match.value);
   }, [queried, filtering]);
 
-  const formatted = useMemo(
-    () => (result === null ? '' : formatJson(result, indent)),
-    [result, indent],
+  /** What the transform form would produce, shown before it is committed. */
+  const previewed = useMemo(
+    () => (result === null ? null : applyTransform(result, transform)),
+    [result, transform],
   );
+  const shown = transforming ? previewed : result;
+
+  const formatted = useMemo(
+    () => (shown === null ? '' : formatJson(shown, indent)),
+    [shown, indent],
+  );
+  const transformFields = useMemo(() => (result === null ? [] : fieldsOf(result)), [result]);
   const stats = useMemo(() => (document === null ? null : summarise(document)), [document]);
 
   // While a filter is on, the box shows a derived value, so the text is not
@@ -74,15 +111,15 @@ export const JsonWorkspace = () => {
   );
 
   const treeSearch = useMemo(
-    () => (view === 'tree' && result !== null ? searchJson(result, search) : EMPTY_SEARCH),
-    [view, result, search],
+    () => (view === 'tree' && shown !== null ? searchJson(shown, search) : EMPTY_SEARCH),
+    [view, shown, search],
   );
   const searching = search.trim() !== '';
   const matchCount = view === 'raw' ? matches.length : treeSearch.matches.size;
 
   const defaults = useMemo(
-    () => (result === null ? new Set<string>() : defaultExpanded(result)),
-    [result],
+    () => (shown === null ? new Set<string>() : defaultExpanded(shown)),
+    [shown],
   );
   const [override, setOverride] = useState<{
     base: ReadonlySet<string>;
@@ -112,8 +149,8 @@ export const JsonWorkspace = () => {
 
   const toggleDeep = useCallback(
     (path: string) => {
-      if (result === null) return;
-      const under = [...allContainerPaths(result)].filter(
+      if (shown === null) return;
+      const under = [...allContainerPaths(shown)].filter(
         (candidate) =>
           candidate === path ||
           candidate.startsWith(`${path}.`) ||
@@ -124,7 +161,7 @@ export const JsonWorkspace = () => {
       else for (const candidate of under) next.add(candidate);
       commit(next);
     },
-    [result, expanded, commit],
+    [shown, expanded, commit],
   );
 
   const stepMatch = (delta: number) => {
@@ -136,6 +173,69 @@ export const JsonWorkspace = () => {
     setSearch(value);
     setActiveMatch(0);
   };
+
+  /**
+   * Tree edits work on the parsed document and are written back as text, so
+   * the text stays the single source of truth and undo needs only one stack.
+   *
+   * Editing is offered only on the document itself: a filtered or transformed
+   * view is derived, and writing to it would have nowhere to go.
+   */
+  const derived = filtering || (transforming && !isEmptyTransform(transform));
+
+  const onEdit = useCallback(
+    (edit: TreeEdit) => {
+      if (document === null) return;
+
+      const next = (() => {
+        switch (edit.kind) {
+          case 'set':
+            return setAt(document, edit.path, edit.value);
+          case 'rename':
+            return renameAt(document, edit.path, edit.name);
+          case 'remove':
+            return removeAt(document, edit.path);
+          case 'duplicate':
+            return duplicateAt(document, edit.path);
+          case 'append':
+            return appendTo(document, edit.path, edit.valueKind).document;
+          case 'convert':
+            return convertAt(document, edit.path, edit.valueKind);
+          case 'sort': {
+            const target = getAt(document, edit.path);
+            return target === undefined ? document : setAt(document, edit.path, sortKeys(target));
+          }
+        }
+      })();
+
+      if (next !== document) setSource(formatJson(next, indent === 'min' ? '2' : indent));
+    },
+    [document, indent, setSource],
+  );
+
+  const onOpenFile = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    void file.text().then(setSource);
+  };
+
+  const onDownload = () => {
+    const url = URL.createObjectURL(new Blob([formatted], { type: 'application/json' }));
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = 'document.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useHotkey({ key: 'z', mod: true }, (event) => {
+    event.preventDefault();
+    history.undo();
+  });
+  useHotkey({ key: 'z', mod: true, shift: true }, (event) => {
+    event.preventDefault();
+    history.redo();
+  });
 
   const encoded = document === null ? null : unwrapEncoded(document);
 
@@ -151,15 +251,15 @@ export const JsonWorkspace = () => {
     return attempt;
   }, [document, trimmed, source]);
 
-  const tabular = result !== null && isTabular(result);
+  const tabular = shown !== null && isTabular(shown);
 
   // The table only exists for data shaped like a table, so the option appears
   // only when there is one to show, and falls back when the shape changes.
   const effectiveView: View = view === 'table' && !tabular ? 'tree' : view;
-  const showTree = effectiveView === 'tree' && result !== null;
-  const showTable = effectiveView === 'table' && result !== null;
+  const showTree = effectiveView === 'tree' && shown !== null;
+  const showTable = effectiveView === 'table' && shown !== null;
   const emptyFilter =
-    effectiveView !== 'raw' && result === null && filtering && queried?.ok === true;
+    effectiveView !== 'raw' && shown === null && filtering && queried?.ok === true;
 
   /**
    * Indentation applies the moment it is chosen.
@@ -175,9 +275,45 @@ export const JsonWorkspace = () => {
     if (document !== null && !filtering) setSource(formatJson(document, next));
   };
 
+  const historyTools = (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Undo"
+        title="Undo"
+        disabled={!history.canUndo}
+        onClick={history.undo}
+      >
+        <Undo2 size={12} aria-hidden />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Redo"
+        title="Redo"
+        disabled={!history.canRedo}
+        onClick={history.redo}
+      >
+        <Redo2 size={12} aria-hidden />
+      </Button>
+      <Button
+        variant={transforming ? 'accent' : 'subtle'}
+        aria-pressed={transforming}
+        disabled={document === null}
+        onClick={() => setTransforming((open) => !open)}
+        title="Filter, sort and pick fields"
+      >
+        <SlidersHorizontal size={12} aria-hidden />
+        Transform
+      </Button>
+    </>
+  );
+
   const tools =
     effectiveView === 'raw' ? (
       <>
+        {historyTools}
         <SegmentedControl
           label="Indentation"
           value={indent}
@@ -210,10 +346,22 @@ export const JsonWorkspace = () => {
           </Button>
         ) : null}
       </>
-    ) : null;
+    ) : (
+      historyTools
+    );
 
   return (
     <div className="h-full overflow-hidden">
+      {/* The visible button is the control; this only carries the picker. */}
+      <input
+        ref={picker}
+        type="file"
+        accept=".json,application/json,text/plain"
+        aria-hidden
+        tabIndex={-1}
+        className="sr-only"
+        onChange={(event) => onOpenFile(event.target.files)}
+      />
       <div className="mx-auto flex h-full w-full max-w-[84rem] flex-col px-3 py-3 sm:px-4 sm:py-4">
         <Panel
           className="min-h-0 flex-1"
@@ -243,6 +391,25 @@ export const JsonWorkspace = () => {
                   { value: 'raw', label: 'raw', title: 'Read and edit the text' },
                 ]}
               />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Open a file"
+                title="Open a .json file"
+                onClick={() => picker.current?.click()}
+              >
+                <FolderOpen size={12} aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Download"
+                title="Save what is shown as a .json file"
+                disabled={formatted === ''}
+                onClick={onDownload}
+              >
+                <Download size={12} aria-hidden />
+              </Button>
               {trimmed === '' ? null : (
                 <Button
                   variant="ghost"
@@ -258,6 +425,25 @@ export const JsonWorkspace = () => {
           }
           bodyClassName="flex min-h-0 flex-col"
         >
+          {transforming && document !== null ? (
+            <TransformPanel
+              spec={transform}
+              onChange={setTransform}
+              fields={transformFields}
+              resultCount={Array.isArray(previewed) ? previewed.length : null}
+              onApply={() => {
+                if (previewed !== null)
+                  setSource(formatJson(previewed, indent === 'min' ? '2' : indent));
+                setTransform(EMPTY_TRANSFORM);
+                setTransforming(false);
+              }}
+              onClose={() => {
+                setTransform(EMPTY_TRANSFORM);
+                setTransforming(false);
+              }}
+            />
+          ) : null}
+
           {document === null && trimmed === '' ? null : (
             <Toolbar
               search={search}
@@ -275,15 +461,16 @@ export const JsonWorkspace = () => {
 
           <div className="min-h-0 flex-1">
             {showTable ? (
-              <JsonTable value={result} sort={sort} onSort={setSort} query={search} />
+              <JsonTable value={shown} sort={sort} onSort={setSort} query={search} />
             ) : showTree ? (
               <JsonTree
-                value={result}
+                value={shown}
                 expanded={expanded}
                 onToggle={toggle}
                 onToggleDeep={toggleDeep}
                 visible={searching ? treeSearch.visible : undefined}
                 query={search}
+                onEdit={derived ? undefined : onEdit}
               />
             ) : emptyFilter ? (
               <Empty />
@@ -292,7 +479,7 @@ export const JsonWorkspace = () => {
                  no state in which you have to switch views before you can paste. */
               <JsonEditor
                 value={editorText}
-                onChange={setSource}
+                onChange={onType}
                 readOnly={filtering}
                 search={{ query: search, active: activeMatch }}
               />

@@ -131,4 +131,16 @@
   .animate-panel[data-state='closed'] {
     animation: pop-out 120ms var(--ease-standard);
   }
+
+  /* Menus rise from the control that opened them. */
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+  .animate-menu[data-state='open'] {
+    animation: menu-in 110ms var(--ease-out-quint);
+    transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  }
 }

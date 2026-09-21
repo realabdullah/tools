@@ -94,6 +94,7 @@ describe('allContainerPaths', () => {
 
 describe('previewOf', () => {
   it('describes containers by size and pluralises', () => {
+    expect(previewOf(Array.from({ length: 1200 }, () => 0))).toBe('[ 1,200 items ]');
     expect(previewOf([1, 2, 3])).toBe('[ 3 items ]');
     expect(previewOf([1])).toBe('[ 1 item ]');
     expect(previewOf([])).toBe('[]');
