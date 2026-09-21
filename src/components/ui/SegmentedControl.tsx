@@ -7,6 +7,7 @@ type Props<T extends string> = {
   options: readonly Segment<T>[];
   onChange: (value: T) => void;
   label: string;
+  disabled?: boolean | undefined;
 };
 
 /** Two or three mutually exclusive options, sized for a panel header. */
@@ -15,11 +16,16 @@ export const SegmentedControl = <T extends string>({
   options,
   onChange,
   label,
+  disabled = false,
 }: Props<T>) => (
   <div
     role="radiogroup"
     aria-label={label}
-    className="border-border flex h-6 items-center gap-0.5 rounded-xs border p-0.5"
+    aria-disabled={disabled || undefined}
+    className={cn(
+      'border-border flex h-6 shrink-0 items-center gap-0.5 rounded-xs border p-0.5',
+      disabled && 'opacity-45',
+    )}
   >
     {options.map((option) => {
       const selected = option.value === value;
@@ -29,10 +35,12 @@ export const SegmentedControl = <T extends string>({
           type="button"
           role="radio"
           aria-checked={selected}
+          disabled={disabled}
           title={option.title ?? option.label}
           onClick={() => onChange(option.value)}
           className={cn(
             'text-2xs h-full rounded-[2px] px-1.5 font-medium transition-colors duration-(--duration-fast)',
+            'disabled:pointer-events-none',
             selected ? 'bg-elevated text-fg' : 'text-fg-subtle hover:text-fg-muted',
           )}
         >

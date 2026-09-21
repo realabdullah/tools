@@ -1,6 +1,15 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
+/**
+ * States the panel knows about.
+ *
+ * A `tone` rather than a `className` border override: two border-colour
+ * utilities of equal specificity are resolved by stylesheet order, not by the
+ * order they are written, so "pass a colour class in" is a coin toss.
+ */
+type Tone = 'default' | 'danger';
+
 type PanelProps = {
   /** Short, lowercase-noun label. The panel's identity, not a sentence. */
   label: ReactNode;
@@ -9,15 +18,25 @@ type PanelProps = {
   /** Small metadata shown next to the label — counts, variants, status. */
   meta?: ReactNode | undefined;
   children: ReactNode;
+  tone?: Tone | undefined;
   className?: string | undefined;
   bodyClassName?: string | undefined;
 };
 
-export const Panel = ({ label, actions, meta, children, className, bodyClassName }: PanelProps) => (
+export const Panel = ({
+  label,
+  actions,
+  meta,
+  children,
+  tone = 'default',
+  className,
+  bodyClassName,
+}: PanelProps) => (
   <section
     className={cn(
-      'border-border bg-surface flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border',
-      'focus-within:border-border-strong transition-colors duration-(--duration-base)',
+      'bg-surface flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border',
+      'transition-colors duration-(--duration-base)',
+      tone === 'danger' ? 'border-danger/40' : 'border-border focus-within:border-border-strong',
       className,
     )}
   >

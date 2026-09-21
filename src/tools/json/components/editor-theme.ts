@@ -25,9 +25,11 @@ const theme = EditorView.theme({
   '.cm-content': { padding: '6px 0', caretColor: 'var(--color-accent)' },
   '&.cm-focused': { outline: 'none' },
 
-  // Gutter: present, quiet, and aligned to the content it numbers.
+  // Gutter: present, quiet, and aligned to the content it numbers. Opaque,
+  // because it is sticky while the content scrolls under it — a transparent
+  // gutter lets long lines slide straight through the line numbers.
   '.cm-gutters': {
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--color-surface)',
     color: 'var(--color-fg-subtle)',
     border: 'none',
     borderRight: '1px solid var(--color-border)',

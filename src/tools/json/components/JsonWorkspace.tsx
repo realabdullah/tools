@@ -1,4 +1,4 @@
-import { ArrowDownAZ, CornerDownRight, Eraser, Unlink, WandSparkles } from 'lucide-react';
+import { ArrowDownAZ, CornerDownRight, Eraser, Unlink } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
@@ -138,13 +138,28 @@ export const JsonWorkspace = () => {
   const showTree = view === 'tree' && result !== null;
   const emptyFilter = view === 'tree' && result === null && filtering && queried?.ok === true;
 
+  /**
+   * Indentation applies the moment it is chosen.
+   *
+   * It used to be a setting that only took effect when a separate Format
+   * button was pressed, which meant picking "min" flattened the document and
+   * picking "2" afterwards appeared to do nothing at all. A layout control
+   * that needs a second button is not a layout control.
+   */
+  const applyIndent = (next: IndentStyle) => {
+    setIndent(next);
+    // While filtering, the text shown is derived and already follows `indent`.
+    if (document !== null && !filtering) setSource(formatJson(document, next));
+  };
+
   const tools =
     view === 'raw' ? (
       <>
         <SegmentedControl
           label="Indentation"
           value={indent}
-          onChange={setIndent}
+          onChange={applyIndent}
+          disabled={document === null}
           options={[
             { value: '2', label: '2', title: 'Two spaces' },
             { value: '4', label: '4', title: 'Four spaces' },
@@ -152,15 +167,6 @@ export const JsonWorkspace = () => {
             { value: 'min', label: 'min', title: 'Minified — no whitespace' },
           ]}
         />
-        <Button
-          variant="subtle"
-          disabled={document === null || filtering}
-          onClick={() => document !== null && setSource(formatJson(document, indent))}
-          title="Rewrite the document with the chosen indentation"
-        >
-          <WandSparkles size={12} aria-hidden />
-          Format
-        </Button>
         <Button
           variant="subtle"
           disabled={document === null || filtering}
@@ -212,7 +218,12 @@ export const JsonWorkspace = () => {
                 ]}
               />
               {trimmed === '' ? null : (
-                <Button variant="ghost" aria-label="Clear" onClick={() => setSource('')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear"
+                  onClick={() => setSource('')}
+                >
                   <Eraser size={12} aria-hidden />
                 </Button>
               )}

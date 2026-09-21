@@ -116,21 +116,21 @@ export const Toolbar = ({
           </span>
           <Button
             variant="ghost"
+            size="icon-sm"
             aria-label="Previous match"
             disabled={matchCount === 0}
             onClick={() => onStepMatch(-1)}
-            className="size-5 p-0"
           >
-            <ChevronUp size={12} aria-hidden />
+            <ChevronUp size={14} aria-hidden />
           </Button>
           <Button
             variant="ghost"
+            size="icon-sm"
             aria-label="Next match"
             disabled={matchCount === 0}
             onClick={() => onStepMatch(1)}
-            className="size-5 p-0"
           >
-            <ChevronDown size={12} aria-hidden />
+            <ChevronDown size={14} aria-hidden />
           </Button>
         </div>
       ) : null}

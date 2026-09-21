@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Eraser } from 'lucide-react';
+import { ArrowLeftRight, Eraser, WandSparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
@@ -7,6 +7,8 @@ import { Panel } from '@/components/ui/Panel';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { byteLength, formatBytes } from '@/lib/bytes';
 import { takePendingInput } from '@/lib/handoff';
+import { formatJson } from '@/tools/json/lib/format';
+import { parseIfJson } from '@/tools/json/lib/transform';
 import {
   decodeText,
   encodeText,
@@ -34,6 +36,7 @@ export const Base64Workspace = () => {
   const [variant, setVariant] = useState<Base64Variant>(() =>
     handed !== null && usesUrlAlphabet(handed) ? 'url' : 'standard',
   );
+  const [prettyJson, setPrettyJson] = useState(true);
 
   const result = useMemo(() => {
     if (input === '') return { output: '', error: null };
@@ -46,12 +49,26 @@ export const Base64Workspace = () => {
   }, [input, mode, variant]);
 
   /**
+   * The most common thing anyone Base64-decodes is a JSON payload, so when the
+   * result is one it is laid out by default. The toggle is there because the
+   * bytes that were actually decoded are the unformatted ones.
+   */
+  const decodedJson = useMemo(
+    () => (mode === 'decode' ? parseIfJson(result.output) : null),
+    [mode, result.output],
+  );
+  const output = decodedJson !== null && prettyJson ? formatJson(decodedJson, '2') : result.output;
+
+  /** Encoding side: the text you are about to encode can be laid out first. */
+  const inputJson = useMemo(() => (mode === 'encode' ? parseIfJson(input) : null), [mode, input]);
+
+  /**
    * Swapping is a round trip, not just a relabelling: the result you were
    * looking at becomes the thing you are now working from.
    */
   const swap = () => {
     setMode(mode === 'encode' ? 'decode' : 'encode');
-    if (result.output !== '') setInput(result.output);
+    if (output !== '') setInput(output);
   };
 
   const inputLabel = mode === 'encode' ? 'Text' : 'Base64';
@@ -77,7 +94,7 @@ export const Base64Workspace = () => {
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(11rem,1fr)_auto_minmax(11rem,1fr)] gap-2 lg:grid-cols-[1fr_auto_1fr] lg:grid-rows-1 lg:gap-3">
           <Panel
             label={inputLabel}
-            className={result.error ? 'border-danger/40' : undefined}
+            tone={result.error ? 'danger' : 'default'}
             meta={
               input === '' ? null : (
                 <span data-numeric className="hidden sm:inline">
@@ -97,8 +114,24 @@ export const Base64Workspace = () => {
                     { value: 'decode', label: 'decode', title: 'Base64 to text' },
                   ]}
                 />
+                {inputJson !== null ? (
+                  <Button
+                    variant="ghost"
+                    aria-label="Format the JSON being encoded"
+                    title="Lay out this JSON before encoding it"
+                    onClick={() => setInput(formatJson(inputJson, '2'))}
+                  >
+                    <WandSparkles size={12} aria-hidden />
+                    Format
+                  </Button>
+                ) : null}
                 {input === '' ? null : (
-                  <Button variant="ghost" aria-label="Clear input" onClick={() => setInput('')}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Clear input"
+                    onClick={() => setInput('')}
+                  >
                     <Eraser size={12} aria-hidden />
                   </Button>
                 )}
@@ -130,8 +163,8 @@ export const Base64Workspace = () => {
               variant="subtle"
               onClick={swap}
               aria-label={`Swap to ${mode === 'encode' ? 'decode' : 'encode'}`}
+              size="icon"
               title={`Swap — ${outputLabel.toLowerCase()} becomes the input`}
-              className="size-7 rounded-full p-0"
             >
               {/* The panels stack on a phone and sit side by side above it. */}
               <ArrowLeftRight size={13} aria-hidden className="rotate-90 lg:rotate-0" />
@@ -141,25 +174,36 @@ export const Base64Workspace = () => {
           <Panel
             label={outputLabel}
             meta={
-              result.output === '' ? null : (
+              output === '' ? null : (
                 <span data-numeric className="hidden sm:inline">
-                  {result.output.length.toLocaleString()} chars
+                  {output.length.toLocaleString()} chars
                 </span>
               )
             }
             actions={
               <>
+                {decodedJson !== null ? (
+                  <SegmentedControl
+                    label="Decoded JSON layout"
+                    value={prettyJson ? 'pretty' : 'raw'}
+                    onChange={(next) => setPrettyJson(next === 'pretty')}
+                    options={[
+                      { value: 'raw', label: 'raw', title: 'Exactly what was decoded' },
+                      { value: 'pretty', label: 'pretty', title: 'Laid out as JSON' },
+                    ]}
+                  />
+                ) : null}
                 {mode === 'encode' ? alphabet : null}
-                <CopyButton value={result.output} label={outputLabel.toLowerCase()} />
+                <CopyButton value={output} label={outputLabel.toLowerCase()} />
               </>
             }
           >
             <Editor
               readOnly
-              value={result.output}
+              value={output}
               placeholder={mode === 'encode' ? 'Base64 appears here' : 'Decoded text appears here'}
               aria-label={`${outputLabel} output`}
-              tabIndex={result.output === '' ? -1 : 0}
+              tabIndex={output === '' ? -1 : 0}
               className={mode === 'decode' ? 'break-words' : undefined}
             />
           </Panel>

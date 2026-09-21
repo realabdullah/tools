@@ -81,6 +81,9 @@ export const JsonEditor = ({ value, onChange, readOnly, search }: JsonEditorProp
         extensions: [
           lineNumbers(),
           placeholder('Paste JSON…'),
+          // A minified document is a single very long line. Wrapping keeps it
+          // readable and keeps the workspace free of horizontal scrolling.
+          EditorView.lineWrapping,
           foldGutter(),
           lintGutter(),
           history(),

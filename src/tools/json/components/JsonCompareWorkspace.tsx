@@ -5,7 +5,6 @@ import { Editor } from '@/components/ui/Editor';
 import { Panel } from '@/components/ui/Panel';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { StatusChip } from '@/components/ui/StatusChip';
-import { cn } from '@/lib/cn';
 import { takePendingInput } from '@/lib/handoff';
 import { diffJson, expandedForChanges } from '../lib/diff';
 import { parseJson, type JsonSyntaxError } from '../lib/parse';
@@ -125,12 +124,14 @@ const SourcePanel = ({ label, value, onChange, parsed }: SourcePanelProps) => {
   return (
     <Panel
       label={label}
-      className={cn('min-h-[11rem]', error && 'border-danger/40')}
+      className="min-h-[11rem]"
+      tone={error ? 'danger' : 'default'}
       meta={parsed?.ok === true ? <StatusChip tone="success">valid</StatusChip> : null}
       actions={
         value ? (
           <Button
             variant="ghost"
+            size="icon"
             aria-label={`Clear ${label.toLowerCase()}`}
             onClick={() => onChange('')}
           >

@@ -19,12 +19,13 @@ export const sortKeys = (value: JsonValue): JsonValue => {
 };
 
 /**
- * A document that is itself a JSON string containing JSON — what you get from
- * a log line or a webhook payload. `null` when there is nothing to unwrap.
+ * Parses text that is structured JSON, or returns `null`.
+ *
+ * Only objects and arrays count: a bare `42` or `"hi"` is valid JSON but there
+ * is nothing to lay out, so treating it as a document would be noise.
  */
-export const unwrapEncoded = (value: JsonValue): JsonValue | null => {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
+export const parseIfJson = (text: string): JsonValue | null => {
+  const trimmed = text.trim();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
 
   try {
@@ -33,3 +34,10 @@ export const unwrapEncoded = (value: JsonValue): JsonValue | null => {
     return null;
   }
 };
+
+/**
+ * A document that is itself a JSON string containing JSON — what you get from
+ * a log line or a webhook payload. `null` when there is nothing to unwrap.
+ */
+export const unwrapEncoded = (value: JsonValue): JsonValue | null =>
+  typeof value === 'string' ? parseIfJson(value) : null;

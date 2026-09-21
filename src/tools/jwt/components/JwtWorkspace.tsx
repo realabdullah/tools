@@ -1,7 +1,6 @@
 import { AlertTriangle, Eraser, ShieldOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { JsonBlock } from '@/components/shared/JsonBlock';
-import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Editor } from '@/components/ui/Editor';
@@ -30,7 +29,8 @@ const SegmentPanel = ({
 }) => (
   <Panel
     label={label}
-    className={cn(className, segment.error && 'border-danger/40')}
+    className={className}
+    tone={segment.error ? 'danger' : 'default'}
     actions={<CopyButton value={segment.text ?? ''} label={label} />}
     bodyClassName="flex flex-col"
   >
@@ -75,14 +75,19 @@ export const JwtWorkspace = () => {
           actions={
             <>
               {token ? (
-                <Button variant="ghost" aria-label="Clear token" onClick={() => setToken('')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear token"
+                  onClick={() => setToken('')}
+                >
                   <Eraser size={12} aria-hidden />
                 </Button>
               ) : null}
               <CopyButton value={token} label="token" />
             </>
           }
-          className={token && !result.ok ? 'border-danger/40' : undefined}
+          tone={token && !result.ok ? 'danger' : 'default'}
           bodyClassName="flex flex-col"
         >
           <Editor

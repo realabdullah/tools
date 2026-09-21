@@ -93,3 +93,38 @@ test('large input stays responsive', async ({ page }) => {
   await input(page).fill('ü'.repeat(50_000));
   await expect(output(page)).not.toHaveValue('');
 });
+
+test('decoded JSON is laid out, with the raw bytes one click away', async ({ page }) => {
+  await page.goto('/base64');
+  await page.getByRole('radio', { name: 'decode' }).click();
+  // {"sub":"123","scopes":["read","write"]}
+  await input(page).fill('eyJzdWIiOiIxMjMiLCJzY29wZXMiOlsicmVhZCIsIndyaXRlIl19');
+
+  await expect(output(page)).toHaveValue(
+    '{\n  "sub": "123",\n  "scopes": [\n    "read",\n    "write"\n  ]\n}',
+  );
+
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(output(page)).toHaveValue('{"sub":"123","scopes":["read","write"]}');
+});
+
+test('the layout toggle stays out of the way for text that is not JSON', async ({ page }) => {
+  await page.goto('/base64');
+  await page.getByRole('radio', { name: 'decode' }).click();
+  await input(page).fill(SAMPLE_BASE64);
+
+  await expect(output(page)).toHaveValue(SAMPLE_TEXT);
+  await expect(page.getByRole('radio', { name: 'pretty' })).toHaveCount(0);
+});
+
+test('JSON can be laid out before it is encoded', async ({ page }) => {
+  await page.goto('/base64');
+  await input(page).fill('{"sub":"123","ok":true}');
+
+  await page.getByRole('button', { name: 'Format the JSON being encoded' }).click();
+  await expect(input(page)).toHaveValue('{\n  "sub": "123",\n  "ok": true\n}');
+
+  // And it is offered only when there is JSON to lay out.
+  await input(page).fill('just some plain text');
+  await expect(page.getByRole('button', { name: 'Format the JSON being encoded' })).toHaveCount(0);
+});

@@ -117,17 +117,63 @@ test('a malformed filter explains itself without losing the document', async ({ 
   await expect(tree(page).getByText('"service"')).toBeVisible();
 });
 
-test('Format rewrites the document with the chosen indentation', async ({ page }) => {
+test('indentation applies immediately, and minifying is reversible', async ({ page }) => {
   await page.goto('/json');
-  await write(page, '{"a":1,"b":[1,2]}');
+  await write(page, DOC);
   await page.getByRole('radio', { name: 'raw' }).click();
 
-  await page.getByRole('button', { name: 'Format' }).click();
-  await expect(page.locator('.cm-content')).toContainText('"a": 1');
+  const lines = page.locator('.cm-line');
+  const formatted = await lines.count();
+  expect(formatted).toBeGreaterThan(1);
 
+  // Choosing an indent is the whole action: there is no second button.
   await page.getByRole('radio', { name: 'min' }).click();
-  await page.getByRole('button', { name: 'Format' }).click();
-  await expect(page.locator('.cm-content')).toHaveText('{"a":1,"b":[1,2]}');
+  await expect(lines).toHaveCount(1);
+
+  // And it goes back, which is what "no way to make it formatted" meant.
+  await page.getByRole('radio', { name: '2' }).click();
+  await expect(lines).toHaveCount(formatted);
+});
+
+test('the indent control is disabled while the document cannot be parsed', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, '{"a": 1,}');
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await expect(page.getByRole('radio', { name: 'min' })).toBeDisabled();
+});
+
+test('search controls are real buttons, not slivers', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, DOC);
+  await page.getByRole('textbox', { name: 'Search' }).fill('example.com');
+
+  for (const name of ['Next match', 'Previous match']) {
+    const box = await page.getByRole('button', { name }).boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(20);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(20);
+
+    const icon = await page.getByRole('button', { name }).locator('svg').boundingBox();
+    expect(icon?.width ?? 0).toBeGreaterThanOrEqual(12);
+  }
+});
+
+test('a long line wraps instead of sliding under the line numbers', async ({ page }) => {
+  await page.goto('/json');
+  await write(page, DOC);
+  await page.getByRole('radio', { name: 'raw' }).click();
+  await page.getByRole('radio', { name: 'min' }).click();
+
+  // The gutter is opaque, so scrolled content cannot show through it.
+  const gutterBackground = await page
+    .locator('.cm-gutters')
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(gutterBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(gutterBackground).not.toBe('transparent');
+
+  // And the content wraps, so there is nothing to scroll sideways.
+  const scroller = page.locator('.cm-scroller');
+  const overflow = await scroller.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test('Sort keys orders objects but leaves arrays alone', async ({ page }) => {
