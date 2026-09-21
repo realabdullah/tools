@@ -20,3 +20,7 @@ blob-report
 
 # local Claude tooling
 .claude/
+
+# local agent and product notes
+AGENTS.md
+VISION.md
